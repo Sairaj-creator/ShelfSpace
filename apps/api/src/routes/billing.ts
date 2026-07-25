@@ -11,7 +11,11 @@ export const billingRouter = Router();
 // Webhook endpoint MUST bypass requireAuth
 billingRouter.post('/webhook', async (req: Request, res: Response): Promise<any> => {
   const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mock';
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('STRIPE_WEBHOOK_SECRET environment variable is missing');
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
 
   let event;
   try {
@@ -88,7 +92,7 @@ billingRouter.post('/webhook', async (req: Request, res: Response): Promise<any>
 
         await prisma.organization.update({
           where: { id: org.id },
-          data: { plan: 'free' },
+          data: { plan: 'free', subscription_status: 'canceled' },
         });
         break;
       }

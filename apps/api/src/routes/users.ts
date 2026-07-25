@@ -8,7 +8,7 @@ export const usersRouter = Router();
 
 usersRouter.use(requireAuth);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+import { getJwtSecret } from '../middleware/tenant';
 
 // GET /users (list users in org)
 usersRouter.get('/', async (req: Request, res: Response): Promise<any> => {
@@ -38,7 +38,7 @@ usersRouter.post('/invite', requireRole(Role.owner), async (req: Request, res: R
     // Create an invite token
     const token = jwt.sign(
       { email, orgId, role: Role.staff, isInvite: true },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '24h' }
     );
 

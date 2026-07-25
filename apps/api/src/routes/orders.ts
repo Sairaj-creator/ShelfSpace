@@ -114,3 +114,28 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
     return res.status(400).json({ error: error.message || 'Error creating order' });
   }
 });
+
+// PATCH /orders/:id/status
+ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const db = (req as any).db;
+    const { status } = req.body;
+    
+    if (!['pending', 'fulfilled', 'cancelled'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be pending, fulfilled, or cancelled' });
+    }
+
+    const existing = await db.order.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Order not found' });
+
+    const updated = await db.order.update({
+      where: { id: req.params.id },
+      data: { status }
+    });
+
+    return res.json({ order: updated });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});

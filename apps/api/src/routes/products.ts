@@ -118,6 +118,6 @@ productsRouter.delete('/:id', requireRole(Role.owner), async (req: Request, res:
     if (error.code === 'P2003') {
       return res.status(400).json({ error: 'Cannot delete product because it has existing orders' });
     }
-    return res.status(500).json({ error: 'Internal server error', details: error.message, stack: error.stack });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });

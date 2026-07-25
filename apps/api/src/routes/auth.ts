@@ -213,9 +213,7 @@ authRouter.post('/accept-invite', async (req: Request, res: Response): Promise<a
 
     let payload: any;
     try {
-      // Must match users.ts secret fallback
-      const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
-      payload = jwt.verify(token, JWT_SECRET);
+      payload = jwt.verify(token, getJwtSecret());
     } catch (e) {
       return res.status(400).json({ error: 'Invalid or expired invite token' });
     }

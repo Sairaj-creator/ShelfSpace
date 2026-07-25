@@ -46,8 +46,11 @@ export const scopedPrisma = (orgId: string) => {
               }
             } else if (['create', 'createMany'].includes(operation)) {
               // Pre-check that the target Order belongs to the org
-              const orderId = a.data?.order_id;
-              if (orderId) {
+              const orderIds: string[] = Array.isArray(a.data)
+                ? Array.from(new Set(a.data.map((d: any) => d.order_id).filter(Boolean)))
+                : (a.data?.order_id ? [a.data.order_id] : []);
+
+              for (const orderId of orderIds) {
                 const order = await prisma.order.findUnique({ where: { id: orderId }, select: { org_id: true } });
                 if (!order || order.org_id !== orgId) {
                   throw new Error('Unauthorized cross-tenant access to Order');

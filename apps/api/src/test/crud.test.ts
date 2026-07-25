@@ -189,5 +189,34 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
         .set('Authorization', `Bearer ${ownerToken}`);
       expect(check.status).toBe(404);
     });
+
+    it('should allow updating order status to fulfilled or cancelled', async () => {
+      // Create an order first
+      const createRes = await request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          customer_name: 'Status Test Customer',
+          items: [{ product_id: productId, qty: 1 }]
+        });
+      const orderId = createRes.body.order.id;
+
+      // Transition status to fulfilled
+      const patchRes = await request(app)
+        .patch(`/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ status: 'fulfilled' });
+
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.order.status).toBe('fulfilled');
+
+      // Invalid status should be rejected
+      const invalidRes = await request(app)
+        .patch(`/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ status: 'invalid_status' });
+
+      expect(invalidRes.status).toBe(400);
+    });
   });
 });

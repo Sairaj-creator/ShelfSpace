@@ -7,6 +7,8 @@ import Stripe from 'stripe';
 import { stripe } from '../lib/stripe';
 import { vi } from 'vitest';
 
+process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mock';
+
 vi.spyOn(stripe.checkout.sessions, 'create').mockResolvedValue({ url: 'https://checkout.stripe.com/mock-session' } as any);
 
 let ownerToken: string;
