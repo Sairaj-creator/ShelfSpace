@@ -115,7 +115,11 @@ billingRouter.use(requireRole(Role.owner));
 billingRouter.post('/create-checkout-session', async (req: Request, res: Response): Promise<any> => {
   try {
     const orgId = (req as any).orgId;
-    const priceId = process.env.STRIPE_PRO_PRICE_ID || 'price_mock';
+    const priceId = process.env.STRIPE_PRO_PRICE_ID;
+    if (!priceId) {
+      console.error('STRIPE_PRO_PRICE_ID is missing');
+      return res.status(500).json({ error: 'STRIPE_PRO_PRICE_ID is not configured' });
+    }
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
     const session = await stripe.checkout.sessions.create({

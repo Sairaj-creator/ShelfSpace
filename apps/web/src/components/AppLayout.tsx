@@ -8,8 +8,6 @@ export function AppLayout() {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    // We can fetch metrics here just to get the subscription status for the banner,
-    // or rely on child components to pass it up. For simplicity, we fetch it here.
     const fetchStatus = async () => {
       const res = await apiFetch('/dashboard/metrics');
       if (res.ok) {
@@ -18,7 +16,7 @@ export function AppLayout() {
       }
     };
     fetchStatus();
-  }, [location.pathname]); // refetch on navigation
+  }, [location.pathname]);
 
   const handleLogout = () => {
     clearTokens();
@@ -26,36 +24,63 @@ export function AppLayout() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Sidebar */}
-      <div style={{ width: '250px', backgroundColor: 'white', borderRight: '1px solid var(--border-color)', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '2rem', color: 'var(--primary-color)' }}>ShelfSpace</h1>
+    <div className="manifest-layout">
+      {/* Manifest Shipping-Label Sidebar */}
+      <aside className="manifest-sidebar">
+        <div className="manifest-brand">
+          <div className="manifest-brand-title">SHELFSPACE</div>
+          <div className="manifest-brand-sub">Inventory Manifest</div>
+        </div>
         
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexGrow: 1 }}>
-          <Link to="/dashboard" style={{ padding: '0.75rem', borderRadius: '0.375rem', backgroundColor: location.pathname === '/dashboard' ? 'var(--background-color)' : 'transparent', color: location.pathname === '/dashboard' ? 'var(--primary-color)' : 'var(--text-primary)' }}>Dashboard</Link>
-          <Link to="/products" style={{ padding: '0.75rem', borderRadius: '0.375rem', backgroundColor: location.pathname === '/products' ? 'var(--background-color)' : 'transparent', color: location.pathname === '/products' ? 'var(--primary-color)' : 'var(--text-primary)' }}>Products</Link>
-          <Link to="/orders" style={{ padding: '0.75rem', borderRadius: '0.375rem', backgroundColor: location.pathname === '/orders' ? 'var(--background-color)' : 'transparent', color: location.pathname === '/orders' ? 'var(--primary-color)' : 'var(--text-primary)' }}>Orders</Link>
+        <nav className="manifest-nav">
+          <Link 
+            to="/dashboard" 
+            className={`manifest-nav-item ${location.pathname === '/dashboard' ? 'active' : ''}`}
+          >
+            <span className="manifest-nav-num">01.</span>
+            <span>Dashboard</span>
+          </Link>
+          <Link 
+            to="/products" 
+            className={`manifest-nav-item ${location.pathname === '/products' ? 'active' : ''}`}
+          >
+            <span className="manifest-nav-num">02.</span>
+            <span>Products</span>
+          </Link>
+          <Link 
+            to="/orders" 
+            className={`manifest-nav-item ${location.pathname === '/orders' ? 'active' : ''}`}
+          >
+            <span className="manifest-nav-num">03.</span>
+            <span>Orders</span>
+          </Link>
         </nav>
 
-        <button onClick={handleLogout} style={{ padding: '0.75rem', backgroundColor: 'transparent', border: 'none', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 500 }}>
-          Log Out
-        </button>
-      </div>
+        <div className="manifest-footer">
+          <button 
+            onClick={handleLogout} 
+            className="btn-outline" 
+            style={{ width: '100%', textAlign: 'center' }}
+          >
+            Log Out
+          </button>
+        </div>
+      </aside>
 
-      {/* Main Content */}
-      <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+      {/* Main Content Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         
-        {/* Banner */}
+        {/* Past Due Warning Banner */}
         {subscriptionStatus === 'past_due' && (
           <div className="alert alert-warning" style={{ borderRadius: 0, margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}>
-            <strong>Payment Failed!</strong> Your subscription is past due. Please update your billing information to avoid service interruption.
+            <strong>Payment Required:</strong> Your subscription is past due. Please update billing to maintain active ledger access.
           </div>
         )}
 
-        {/* Page Content */}
-        <div style={{ padding: '2rem', flexGrow: 1 }}>
+        {/* Page Container */}
+        <main className="manifest-main">
           <Outlet />
-        </div>
+        </main>
       </div>
     </div>
   );

@@ -33,9 +33,14 @@ export function Login() {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: 'var(--background-color)' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '400px' }}>
-        <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>Log In to ShelfSpace</h2>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: 'var(--bg-paper)' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '420px', padding: '2.5rem 2rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+          <h1 style={{ fontSize: '1.75rem', color: 'var(--accent-ledger)', marginBottom: '0.25rem' }}>SHELFSPACE</h1>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+            Sign In to Inventory Manifest
+          </p>
+        </div>
         
         {error && <div className="alert alert-danger">{error}</div>}
 
@@ -48,11 +53,11 @@ export function Login() {
             <label>Password</label>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
           </div>
-          <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Log In</button>
+          <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '1.25rem' }}>Log In</button>
         </form>
         
-        <p style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.875rem' }}>
-          Don't have an account? <Link to="/signup">Sign up</Link>
+        <p style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+          Don't have an account? <Link to="/signup" style={{ color: 'var(--accent-ledger)', fontWeight: 600 }}>Sign up</Link>
         </p>
       </div>
     </div>

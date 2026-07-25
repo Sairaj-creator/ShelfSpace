@@ -66,12 +66,15 @@ export function Products() {
     }
   };
 
-  if (loading) return <div>Loading products...</div>;
+  if (loading) return <div style={{ color: 'var(--text-muted)' }}>Loading inventory manifest...</div>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Products</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+        <div>
+          <h2>Products</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Active SKU listings and stock ledger</p>
+        </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           {showForm ? 'Cancel' : 'Add Product'}
         </button>
@@ -81,11 +84,11 @@ export function Products() {
 
       {showForm && (
         <div className="card" style={{ marginBottom: '2rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Create New Product</h3>
+          <h3 style={{ marginBottom: '1.25rem' }}>Create New Product</h3>
           {formError && <div className="alert alert-danger">{formError}</div>}
           
           <form onSubmit={handleCreate}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
               <div className="input-group">
                 <label>Name</label>
                 <input type="text" value={name} onChange={e => setName(e.target.value)} required />
@@ -95,7 +98,7 @@ export function Products() {
                 <input type="text" value={sku} onChange={e => setSku(e.target.value)} required />
               </div>
               <div className="input-group">
-                <label>Price ($)</label>
+                <label>Price</label>
                 <input type="number" step="0.01" min="0" value={price} onChange={e => setPrice(e.target.value)} required />
               </div>
               <div className="input-group">
@@ -103,14 +106,14 @@ export function Products() {
                 <input type="number" min="0" value={stockQty} onChange={e => setStockQty(e.target.value)} required />
               </div>
             </div>
-            <button type="submit" className="btn-primary" style={{ marginTop: '1rem' }}>Save Product</button>
+            <button type="submit" className="btn-primary" style={{ marginTop: '1.25rem' }}>Save Product</button>
           </form>
         </div>
       )}
 
       <div className="card">
         {products.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)' }}>No products found. Add one to get started.</p>
+          <p style={{ color: 'var(--text-muted)' }}>No products in manifest. Click "Add Product" to create one.</p>
         ) : (
           <table>
             <thead>
@@ -124,10 +127,15 @@ export function Products() {
             <tbody>
               {products.map(p => (
                 <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td>{p.sku}</td>
-                  <td>${(p.price / 100).toFixed(2)}</td>
-                  <td>{p.stock_qty}</td>
+                  <td style={{ fontWeight: 600 }}>{p.name}</td>
+                  <td><code style={{ fontSize: '0.8125rem' }}>{p.sku}</code></td>
+                  <td className="number-tabular">${(p.price / 100).toFixed(2)}</td>
+                  <td className="number-tabular">
+                    <span style={{ fontWeight: 600, color: p.stock_qty < 5 ? 'var(--accent-rust)' : 'var(--text-ink)' }}>
+                      {p.stock_qty}
+                    </span>
+                    {p.stock_qty < 5 && <span className="stamp-warning">⚠ LOW</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
