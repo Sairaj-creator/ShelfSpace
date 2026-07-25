@@ -1,5 +1,10 @@
 import Stripe from 'stripe';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock', {
+const apiKey = process.env.STRIPE_SECRET_KEY;
+if (!apiKey) {
+  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+}
+
+export const stripe = new Stripe(apiKey, {
   apiVersion: '2025-01-27.acacia',
 });
