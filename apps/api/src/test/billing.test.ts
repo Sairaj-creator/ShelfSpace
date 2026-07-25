@@ -7,6 +7,7 @@ import Stripe from 'stripe';
 import { stripe } from '../lib/stripe';
 import { vi } from 'vitest';
 
+// Ensure test env defaults are set before stripe module execution
 process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_mock';
 process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mock';
 
