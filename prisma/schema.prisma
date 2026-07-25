@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  free
+  pro
+}
+
+enum Role {
+  owner
+  staff
+}
+
+enum OrderStatus {
+  pending
+  fulfilled
+  cancelled
+}
+
+model Organization {
+  id                  String   @id @default(uuid())
+  name                String
+  stripe_customer_id  String?
+  subscription_status String?
+  plan                Plan     @default(free)
+  created_at          DateTime @default(now())
+
+  users    User[]
+  products Product[]
+  orders   Order[]
+
+  @@map("organizations")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  org_id        String
+  email         String   @unique
+  password_hash String
+  role          Role
+  created_at    DateTime @default(now())
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id])
+  @@map("users")
+}
+
+model Product {
+  id         String   @id @default(uuid())
+  org_id     String
+  name       String
+  sku        String
+  price      Int      // Store as cents
+  stock_qty  Int      @default(0)
+  created_at DateTime @default(now())
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  order_items  OrderItem[]
+
+  @@index([org_id])
+  @@map("products")
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  org_id        String
+  customer_name String
+  status        OrderStatus @default(pending)
+  total         Int         // Store as cents
+  created_at    DateTime    @default(now())
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  items        OrderItem[]
+
+  @@index([org_id])
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String @id @default(uuid())
+  order_id   String
+  product_id String
+  qty        Int
+  unit_price Int    // Store as cents at time of order
+
+  order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
+
+  @@index([order_id])
+  @@index([product_id])
+  @@map("order_items")
+}

@@ -1,0 +1,6 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# In dev, we mount the volume, so we just need a command to run
+CMD ["npm", "run", "dev"]
