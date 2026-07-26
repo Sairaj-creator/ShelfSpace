@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch, clearTokens } from '../lib/api';
 
@@ -16,7 +16,7 @@ export function AppLayout() {
       }
     };
     fetchStatus();
-  }, [location.pathname]);
+  }, []);
 
   const handleLogout = () => {
     clearTokens();
@@ -72,7 +72,7 @@ export function AppLayout() {
         
         {/* Past Due Warning Banner */}
         {subscriptionStatus === 'past_due' && (
-          <div className="alert alert-warning" style={{ borderRadius: 0, margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}>
+          <div className="alert alert-warning alert-banner-fullwidth">
             <strong>Payment Required:</strong> Your subscription is past due. Please update billing to maintain active ledger access.
           </div>
         )}
