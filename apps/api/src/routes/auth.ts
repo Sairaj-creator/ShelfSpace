@@ -149,6 +149,15 @@ authRouter.post('/refresh', async (req: Request, res: Response): Promise<any> =>
   }
 });
 
+authRouter.post('/logout', (req: Request, res: Response): any => {
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  });
+  return res.json({ message: 'Logged out successfully' });
+});
+
 authRouter.post('/verify-email', async (req: Request, res: Response): Promise<any> => {
   try {
     const { token } = req.body;

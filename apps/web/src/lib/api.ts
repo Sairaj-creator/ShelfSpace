@@ -8,11 +8,17 @@ export const setAccessToken = (token: string) => {
   localStorage.setItem('accessToken', token);
 };
 
-export const clearTokens = () => {
+export const clearTokens = async () => {
   accessToken = null;
   localStorage.removeItem('accessToken');
-  // Refresh token is HttpOnly cookie, we'll clear it on the server if needed,
-  // or we just redirect to login and it overwrites next time.
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch (err) {
+    console.error('Logout failed', err);
+  }
 };
 
 async function refreshToken(): Promise<string | null> {
