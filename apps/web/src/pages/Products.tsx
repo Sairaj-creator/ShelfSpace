@@ -1,5 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
+import { queryKeys } from '../lib/queryKeys';
+import { queryClient } from '../lib/queryClient';
+import { EditableStockCell } from '../components/EditableStockCell';
+import { SkeletonRow } from '../components/SkeletonRow';
+import { Trash2 } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -7,12 +14,13 @@ interface Product {
   sku: string;
   price: number;
   stock_qty: number;
+  low_stock_threshold: number;
 }
 
 export function Products() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<'name' | 'sku' | 'stock_qty'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Form state
   const [name, setName] = useState('');
@@ -22,51 +30,144 @@ export function Products() {
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    const res = await apiFetch('/products');
-    if (res.ok) {
+  const { data: products = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.products,
+    queryFn: async () => {
+      const res = await apiFetch('/products');
+      if (!res.ok) throw new Error('Failed to fetch products');
       const data = await res.json();
-      setProducts(Array.isArray(data) ? data : (data.products || []));
-    } else {
-      setError('Failed to load products');
-    }
-    setLoading(false);
-  };
+      return Array.isArray(data) ? data : (data.products || []) as Product[];
+    },
+    refetchInterval: 15_000,
+  });
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError('');
-
-    const res = await apiFetch('/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        sku,
-        price: Math.round(parseFloat(price) * 100),
-        stock_qty: parseInt(stockQty, 10) || 0
-      })
-    });
-
-    if (res.ok) {
+  const createMutation = useMutation({
+    mutationFn: async (newProduct: any) => {
+      const res = await apiFetch('/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create product');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('Product created successfully');
       setShowForm(false);
       setName('');
       setSku('');
       setPrice('');
       setStockQty('');
-      fetchProducts();
+      queryClient.invalidateQueries({ queryKey: queryKeys.products });
+    },
+    onError: (err: Error) => {
+      setFormError(err.message);
+    }
+  });
+
+  const updateStockMutation = useMutation({
+    mutationFn: async ({ id, stock_qty }: { id: string, stock_qty: number }) => {
+      const res = await apiFetch(`/products/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock_qty })
+      });
+      if (!res.ok) throw new Error('Failed to update stock');
+      return res.json();
+    },
+    onMutate: async (newUpdate) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.products });
+      const previousProducts = queryClient.getQueryData<Product[]>(queryKeys.products);
+      if (previousProducts) {
+        queryClient.setQueryData<Product[]>(queryKeys.products, old => 
+          old?.map(p => p.id === newUpdate.id ? { ...p, stock_qty: newUpdate.stock_qty } : p)
+        );
+      }
+      return { previousProducts };
+    },
+    onError: (_err, _newUpdate, context) => {
+      toast.error('Failed to update stock');
+      if (context?.previousProducts) {
+        queryClient.setQueryData(queryKeys.products, context.previousProducts);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products });
+    },
+    onSuccess: () => {
+      toast.success('Stock updated');
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiFetch(`/products/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete product');
+      }
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.products });
+      const previousProducts = queryClient.getQueryData<Product[]>(queryKeys.products);
+      if (previousProducts) {
+        queryClient.setQueryData<Product[]>(queryKeys.products, old => old?.filter(p => p.id !== id));
+      }
+      return { previousProducts };
+    },
+    onError: (err: Error, _id, context) => {
+      toast.error(err.message);
+      if (context?.previousProducts) {
+        queryClient.setQueryData(queryKeys.products, context.previousProducts);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products });
+    },
+    onSuccess: () => {
+      toast.success('Product deleted');
+    }
+  });
+
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    createMutation.mutate({
+      name,
+      sku,
+      price: Math.round(parseFloat(price) * 100),
+      stock_qty: parseInt(stockQty, 10) || 0
+    });
+  };
+
+  const handleSort = (field: 'name' | 'sku' | 'stock_qty') => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
-      const errData = await res.json();
-      setFormError(errData.error || 'Failed to create product');
+      setSortField(field);
+      setSortOrder('asc');
     }
   };
 
-  if (loading) return <div style={{ color: 'var(--text-muted)' }}>Loading inventory manifest...</div>;
+  const filteredAndSortedProducts = products
+    .filter(p => 
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortOrder === 'asc' ? valA - valB : valB - valA;
+      }
+      return 0;
+    });
 
   return (
     <div>
@@ -80,7 +181,7 @@ export function Products() {
         </button>
       </div>
 
-      {error && <div className="alert alert-danger">{error}</div>}
+      {error && <div className="alert alert-danger">{(error as Error).message}</div>}
 
       {showForm && (
         <div className="card" style={{ marginBottom: '2rem' }}>
@@ -106,15 +207,25 @@ export function Products() {
                 <input type="number" min="0" value={stockQty} onChange={e => setStockQty(e.target.value)} required />
               </div>
             </div>
-            <button type="submit" className="btn-primary" style={{ marginTop: '1.25rem' }}>Save Product</button>
+            <button type="submit" className="btn-primary" style={{ marginTop: '1.25rem' }} disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Saving...' : 'Save Product'}
+            </button>
           </form>
         </div>
       )}
 
       <div className="card">
-        {products.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>No products in manifest. Click "Add Product" to create one.</p>
-        ) : (
+        <div style={{ marginBottom: '1rem' }}>
+          <input 
+            type="text" 
+            placeholder="Search products by name or SKU..." 
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ width: '100%', maxWidth: '400px', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+          />
+        </div>
+
+        {isLoading ? (
           <table>
             <thead>
               <tr>
@@ -122,22 +233,70 @@ export function Products() {
                 <th>SKU</th>
                 <th>Price</th>
                 <th>Stock</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {products.map(p => (
-                <tr key={p.id}>
-                  <td style={{ fontWeight: 600 }}>{p.name}</td>
-                  <td><code style={{ fontSize: '0.8125rem' }}>{p.sku}</code></td>
-                  <td className="number-tabular">${(p.price / 100).toFixed(2)}</td>
-                  <td className="number-tabular">
-                    <span style={{ fontWeight: 600, color: p.stock_qty < 5 ? 'var(--accent-rust)' : 'var(--text-ink)' }}>
-                      {p.stock_qty}
-                    </span>
-                    {p.stock_qty < 5 && <span className="stamp-warning">⚠ LOW</span>}
-                  </td>
-                </tr>
-              ))}
+              <SkeletonRow columns={5} />
+              <SkeletonRow columns={5} />
+              <SkeletonRow columns={5} />
+            </tbody>
+          </table>
+        ) : filteredAndSortedProducts.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)' }}>No products found.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
+                  Name {sortField === 'name' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                </th>
+                <th onClick={() => handleSort('sku')} style={{ cursor: 'pointer' }}>
+                  SKU {sortField === 'sku' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                </th>
+                <th>Price</th>
+                <th onClick={() => handleSort('stock_qty')} style={{ cursor: 'pointer' }}>
+                  Stock {sortField === 'stock_qty' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                </th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAndSortedProducts.map(p => {
+                const threshold = p.low_stock_threshold ?? 5;
+                const isLow = p.stock_qty < threshold;
+                return (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 600 }}>{p.name}</td>
+                    <td><code style={{ fontSize: '0.8125rem' }}>{p.sku}</code></td>
+                    <td className="number-tabular">${(p.price / 100).toFixed(2)}</td>
+                    <td className="number-tabular">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontWeight: 600, color: isLow ? 'var(--accent-rust)' : 'var(--text-ink)' }}>
+                          <EditableStockCell 
+                            value={p.stock_qty} 
+                            onSave={(val) => updateStockMutation.mutate({ id: p.id, stock_qty: val })} 
+                          />
+                        </span>
+                        {isLow && <span className="stamp-warning">⚠ LOW</span>}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button 
+                        onClick={() => {
+                          if (confirm('Are you sure you want to delete this product?')) {
+                            deleteMutation.mutate(p.id);
+                          }
+                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-rust)', padding: '0.25rem' }}
+                        title="Delete product"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

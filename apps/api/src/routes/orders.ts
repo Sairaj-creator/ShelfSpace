@@ -17,7 +17,11 @@ ordersRouter.get('/', async (req: Request, res: Response): Promise<any> => {
     const db = (req as any).db;
     const orders = await db.order.findMany({
       orderBy: { created_at: 'desc' },
-      include: { items: true }
+      include: { 
+        items: {
+          include: { product: true }
+        }
+      }
     });
     return res.json({ orders });
   } catch (error) {
@@ -32,7 +36,11 @@ ordersRouter.get('/:id', async (req: Request, res: Response): Promise<any> => {
     const db = (req as any).db;
     const order = await db.order.findUnique({
       where: { id: req.params.id },
-      include: { items: true }
+      include: { 
+        items: {
+          include: { product: true }
+        }
+      }
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
     return res.json({ order });

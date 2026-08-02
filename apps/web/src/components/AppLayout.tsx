@@ -1,22 +1,24 @@
-import { useEffect, useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { apiFetch, clearTokens } from '../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { clearTokens, apiFetch } from '../lib/api';
+import { queryKeys } from '../lib/queryKeys';
 
 export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchStatus = async () => {
+  const { data: metrics } = useQuery({
+    queryKey: queryKeys.dashboardMetrics,
+    queryFn: async () => {
       const res = await apiFetch('/dashboard/metrics');
-      if (res.ok) {
-        const data = await res.json();
-        setSubscriptionStatus(data.subscription_status);
-      }
-    };
-    fetchStatus();
-  }, []);
+      if (!res.ok) throw new Error('Failed to load metrics');
+      return res.json();
+    },
+    refetchInterval: 15_000,
+    staleTime: 10_000, // Reuse fresh data across AppLayout and Dashboard
+  });
+
+  const subscriptionStatus = metrics?.subscription_status || null;
 
   const handleLogout = () => {
     clearTokens();

@@ -24,3 +24,5 @@ Thumbs.db
 *.tmp
 .idea/
 .vscode/
+
+stripe.exe

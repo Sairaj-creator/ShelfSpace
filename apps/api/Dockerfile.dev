@@ -1,5 +1,7 @@
 FROM node:20-alpine
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # In dev, we mount the volume, so we just need a command to run

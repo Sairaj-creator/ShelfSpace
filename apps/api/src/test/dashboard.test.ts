@@ -98,9 +98,11 @@ describe('Dashboard Metrics', () => {
     // 3000 (fulfilled) + 1500 (pending) = 4500. Cancelled (6000) ignored.
     expect(res.body.revenue_cents).toBe(4500);
     expect(res.body.low_stock_products).toEqual([]);
+    expect(res.body.daily_revenue).toBeDefined();
+    expect(res.body.daily_revenue.length).toBe(30);
   });
 
-  it('returns products with stock < 5', async () => {
+  it('returns products with stock < low_stock_threshold', async () => {
     // 1. Create one low stock product
     const lowStock = await prisma.product.create({
       data: { org_id: orgId, name: 'Low Stock', sku: 'LOW', price: 1000, stock_qty: 2 }
@@ -111,12 +113,24 @@ describe('Dashboard Metrics', () => {
       data: { org_id: orgId, name: 'High Stock', sku: 'HIGH', price: 2000, stock_qty: 10 }
     });
 
+    // 3. Create one custom threshold product that is low
+    const customLow = await prisma.product.create({
+      data: { org_id: orgId, name: 'Custom Low', sku: 'CUST-LOW', price: 3000, stock_qty: 8, low_stock_threshold: 10 }
+    });
+    
+    // 4. Create one custom threshold product that is sufficient
+    await prisma.product.create({
+      data: { org_id: orgId, name: 'Custom High', sku: 'CUST-HIGH', price: 4000, stock_qty: 12, low_stock_threshold: 10 }
+    });
+
     const res = await request(app)
       .get('/dashboard/metrics')
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.low_stock_products).toHaveLength(1);
-    expect(res.body.low_stock_products[0].id).toBe(lowStock.id);
+    expect(res.body.low_stock_products).toHaveLength(2);
+    const ids = res.body.low_stock_products.map((p: any) => p.id);
+    expect(ids).toContain(lowStock.id);
+    expect(ids).toContain(customLow.id);
   });
 });

@@ -19,6 +19,10 @@ services:
     environment:
       - DATABASE_URL=postgresql://shelfspace:shelfspace_password@postgres:5432/shelfspace?schema=public
       - PORT=3000
+      - JWT_SECRET
+      - STRIPE_SECRET_KEY
+      - STRIPE_WEBHOOK_SECRET
+      - STRIPE_PRO_PRICE_ID
     ports:
       - "3000:3000"
     volumes:

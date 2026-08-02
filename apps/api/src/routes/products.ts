@@ -42,10 +42,13 @@ productsRouter.get('/:id', async (req: Request, res: Response): Promise<any> => 
 productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
   try {
     const db = (req as any).db;
-    const { name, sku, price, stock_qty } = req.body;
+    const { name, sku, price, stock_qty, low_stock_threshold } = req.body;
     
     if (!name || !sku || price === undefined) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (stock_qty !== undefined && stock_qty < 0) {
+      return res.status(400).json({ error: 'Stock quantity cannot be negative' });
     }
 
     const orgId = (req as any).orgId;
@@ -63,7 +66,8 @@ productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
         name,
         sku,
         price,
-        stock_qty: stock_qty || 0
+        stock_qty: stock_qty || 0,
+        low_stock_threshold: low_stock_threshold !== undefined ? low_stock_threshold : 5,
       }
     });
 
@@ -78,11 +82,15 @@ productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
 productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => {
   try {
     const db = (req as any).db;
-    const { name, sku, price, stock_qty } = req.body;
+    const { name, sku, price, stock_qty, low_stock_threshold } = req.body;
     
     // verify exists
     const existing = await db.product.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Product not found' });
+
+    if (stock_qty !== undefined && stock_qty < 0) {
+      return res.status(400).json({ error: 'Stock quantity cannot be negative' });
+    }
 
     const product = await db.product.update({
       where: { id: req.params.id },
@@ -91,6 +99,7 @@ productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => 
         sku: sku !== undefined ? sku : existing.sku,
         price: price !== undefined ? price : existing.price,
         stock_qty: stock_qty !== undefined ? stock_qty : existing.stock_qty,
+        low_stock_threshold: low_stock_threshold !== undefined ? low_stock_threshold : existing.low_stock_threshold,
       }
     });
 

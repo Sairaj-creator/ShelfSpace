@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -53,13 +54,14 @@ model User {
 }
 
 model Product {
-  id         String   @id @default(uuid())
-  org_id     String
-  name       String
-  sku        String
-  price      Int      // Store as cents
-  stock_qty  Int      @default(0)
-  created_at DateTime @default(now())
+  id                  String   @id @default(uuid())
+  org_id              String
+  name                String
+  sku                 String
+  price               Int // Store as cents
+  stock_qty           Int      @default(0)
+  low_stock_threshold Int      @default(5)
+  created_at          DateTime @default(now())
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   order_items  OrderItem[]
@@ -73,7 +75,7 @@ model Order {
   org_id        String
   customer_name String
   status        OrderStatus @default(pending)
-  total         Int         // Store as cents
+  total         Int // Store as cents
   created_at    DateTime    @default(now())
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
@@ -88,7 +90,7 @@ model OrderItem {
   order_id   String
   product_id String
   qty        Int
-  unit_price Int    // Store as cents at time of order
+  unit_price Int // Store as cents at time of order
 
   order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
   product Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
