@@ -39,6 +39,21 @@ test.describe('Critical Path: Signup -> Product -> Order -> Dashboard -> Stripe 
     await page.fill('input[type="password"]', 'password123');
     await page.click('button[type="submit"]');
 
+    // Should show success message
+    await expect(page.locator('.alert-success')).toContainText('Signup successful');
+
+    // Manually verify email in DB to proceed
+    await prisma.user.update({
+      where: { email: uniqueEmail },
+      data: { email_verified: true }
+    });
+
+    // 1b. Login
+    await page.goto('/login');
+    await page.fill('input[type="email"]', uniqueEmail);
+    await page.fill('input[type="password"]', 'password123');
+    await page.click('button[type="submit"]');
+
     // Should navigate to dashboard
     await expect(page).toHaveURL(/.*dashboard/);
     await expect(page.locator('h2')).toHaveText('Dashboard');
@@ -77,7 +92,7 @@ test.describe('Critical Path: Signup -> Product -> Order -> Dashboard -> Stripe 
     await expect(page).toHaveURL(/.*dashboard/);
 
     // Verify revenue metric has updated server-side
-    await expect(page.locator('.card:has-text("Revenue This Month") p')).toContainText('$50.00');
+    await expect(page.locator('.card:has-text("Revenue This Month") p.number-tabular')).toContainText('$50.00');
 
     // 5. Stripe Redirect (Stubbing API call)
     // Intercept the create-checkout-session call

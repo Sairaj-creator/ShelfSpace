@@ -1,16 +1,14 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-let accessToken = localStorage.getItem('accessToken') || null;
+let accessToken: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 
 export const setAccessToken = (token: string) => {
   accessToken = token;
-  localStorage.setItem('accessToken', token);
 };
 
 export const clearTokens = async () => {
   accessToken = null;
-  localStorage.removeItem('accessToken');
   try {
     await fetch(`${API_URL}/auth/logout`, {
       method: 'POST',

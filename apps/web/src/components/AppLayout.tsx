@@ -2,10 +2,34 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { clearTokens, apiFetch } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
+import { useEffect, useState } from 'react';
+import { Menu, X } from 'lucide-react';
+import { CommandPalette } from './CommandPalette';
 
 export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const location = useLocation();
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Close sidebar on route change for mobile
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    // Attempt to verify session (this will trigger a silent refresh if needed)
+    apiFetch('/auth/me')
+      .then(res => {
+        if (!res.ok) {
+          clearTokens();
+          navigate('/login');
+        }
+      })
+      .catch(() => navigate('/login'))
+      .finally(() => setIsInitializing(false));
+  }, [navigate]);
 
   const { data: metrics } = useQuery({
     queryKey: queryKeys.dashboardMetrics,
@@ -25,10 +49,26 @@ export function AppLayout() {
     navigate('/login');
   };
 
+  if (isInitializing) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: 'var(--bg-paper)' }}>
+        <div style={{ color: 'var(--text-muted)' }}>Verifying secure session...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="manifest-layout">
+      <CommandPalette />
+      
+      {/* Mobile Sidebar Overlay */}
+      <div 
+        className={`manifest-sidebar-overlay ${sidebarOpen ? 'open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+
       {/* Manifest Shipping-Label Sidebar */}
-      <aside className="manifest-sidebar">
+      <aside className={`manifest-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="manifest-brand">
           <div className="manifest-brand-title">SHELFSPACE</div>
           <div className="manifest-brand-sub">Inventory Manifest</div>
@@ -72,6 +112,20 @@ export function AppLayout() {
       {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         
+        {/* Mobile Header */}
+        <header className="mobile-header">
+          <div className="manifest-brand-title" style={{ fontSize: '1.2rem', marginBottom: 0 }}>
+            ShelfSpace
+          </div>
+          <button 
+            className="btn-outline" 
+            style={{ padding: '0.4rem' }}
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={20} />
+          </button>
+        </header>
+
         {/* Past Due Warning Banner */}
         {subscriptionStatus === 'past_due' && (
           <div className="alert alert-warning alert-banner-fullwidth">

@@ -11,6 +11,22 @@ export default defineConfig({
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
   },
+  webServer: [
+    {
+      command: 'npm run dev -w apps/api',
+      cwd: '../../',
+      port: 3000,
+      timeout: 120 * 1000,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: 'npm run dev -w apps/web',
+      cwd: '../../',
+      port: 5173,
+      timeout: 120 * 1000,
+      reuseExistingServer: !process.env.CI,
+    }
+  ],
   projects: [
     {
       name: 'chromium',

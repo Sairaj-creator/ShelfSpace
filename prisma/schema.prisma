@@ -43,6 +43,7 @@ model User {
   id            String   @id @default(uuid())
   org_id        String
   email         String   @unique
+  email_verified Boolean  @default(false)
   password_hash String
   role          Role
   created_at    DateTime @default(now())
@@ -67,6 +68,7 @@ model Product {
   order_items  OrderItem[]
 
   @@index([org_id])
+  @@unique([org_id, sku])
   @@map("products")
 }
 

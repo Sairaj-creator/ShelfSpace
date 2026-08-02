@@ -6,9 +6,10 @@ export const dashboardRouter = Router();
 
 dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response) => {
   const orgId = req.orgId!;
+  const db = (req as any).db;
   
   // 1. Fetch Org details for banner
-  const org = await prisma.organization.findUnique({
+  const org = await db.organization.findUnique({
     where: { id: orgId },
     select: {
       plan: true,
@@ -22,8 +23,7 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
 
   // 2. Fetch Low Stock Products
   // Fetch all products for the org and filter in JS because Prisma cannot compare two columns directly
-  const allProducts = await prisma.product.findMany({
-    where: { org_id: orgId },
+  const allProducts = await db.product.findMany({
     select: {
       id: true,
       name: true,
@@ -42,7 +42,7 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
-  const revenueAggregate = await prisma.order.aggregate({
+  const revenueAggregate = await db.order.aggregate({
     where: {
       org_id: orgId,
       created_at: { gte: startOfMonth },
@@ -58,7 +58,7 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
   thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-  const rawDailyRevenue = await prisma.$queryRaw<
+  const rawDailyRevenue = await db.$queryRaw<
     Array<{ date: Date; revenue_cents: bigint }>
   >`
     SELECT date_trunc('day', created_at) as date, SUM(total) as revenue_cents

@@ -27,15 +27,19 @@ beforeAll(async () => {
   await prisma.organization.deleteMany();
 
   // Setup org and owner
-  const res = await request(app)
+  await request(app)
     .post('/auth/signup')
     .send({ email: 'billingowner@test.com', password: 'password123', orgName: 'Billing Org' });
+
+  const loginRes = await request(app)
+    .post('/auth/login')
+    .send({ email: 'billingowner@test.com', password: 'password123' });
   
-  ownerToken = res.body.accessToken;
+  ownerToken = loginRes.body.accessToken;
 
   const owner = await prisma.user.findUnique({ where: { email: 'billingowner@test.com' } });
   orgId = owner!.org_id;
-  await prisma.user.create({
+  const staff = await prisma.user.create({
     data: {
       email: 'billingstaff@test.com',
       password_hash: 'hash',
@@ -46,7 +50,7 @@ beforeAll(async () => {
 
   const jwt = require('jsonwebtoken');
   const secret = process.env.JWT_SECRET || 'test_jwt_secret_key_123';
-  staffToken = jwt.sign({ userId: 'staff-id', orgId, role: Role.staff }, secret);
+  staffToken = jwt.sign({ userId: staff.id, orgId, role: Role.staff }, secret);
 
   // Set to free plan
   await prisma.organization.update({

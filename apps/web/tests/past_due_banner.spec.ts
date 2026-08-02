@@ -26,7 +26,8 @@ test.describe('Dashboard Warning Banner', () => {
         org_id: org.id,
         email: uniqueEmail,
         password_hash: passwordHash,
-        role: 'owner'
+        role: 'owner',
+        email_verified: true
       }
     });
   });

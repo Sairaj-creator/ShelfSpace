@@ -62,12 +62,15 @@ export function Orders() {
       if (!res.ok) throw new Error('Failed to load products');
       const data = await res.json();
       const prods = Array.isArray(data) ? data : (data.products || []) as Product[];
-      if (prods.length > 0 && !selectedProductId) {
-        setSelectedProductId(prods[0].id);
-      }
       return prods;
     },
   });
+
+  React.useEffect(() => {
+    if (availableProducts.length > 0 && !selectedProductId) {
+      setSelectedProductId(availableProducts[0].id);
+    }
+  }, [availableProducts, selectedProductId]);
 
   const createMutation = useMutation({
     mutationFn: async (newOrder: any) => {
@@ -89,6 +92,7 @@ export function Orders() {
       setQty('1');
       queryClient.invalidateQueries({ queryKey: queryKeys.orders });
       queryClient.invalidateQueries({ queryKey: queryKeys.products });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardMetrics });
     },
     onError: (err: any) => {
       setFormError(err.message);
@@ -189,24 +193,27 @@ export function Orders() {
 
       <div className="card">
         {isLoading ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Customer Name</th>
-                <th>Status</th>
-                <th>Total</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonRow columns={4} />
-              <SkeletonRow columns={4} />
-              <SkeletonRow columns={4} />
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>Customer Name</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                <SkeletonRow columns={4} />
+                <SkeletonRow columns={4} />
+                <SkeletonRow columns={4} />
+              </tbody>
+            </table>
+          </div>
         ) : orders.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>No orders in manifest.</p>
         ) : (
+          <div style={{ overflowX: 'auto', width: '100%' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
@@ -279,6 +286,7 @@ export function Orders() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

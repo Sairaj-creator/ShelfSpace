@@ -83,11 +83,18 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
           throw new Error(`Insufficient stock for product ${product.name}`);
         }
 
-        // Decrement stock
-        await tx.product.update({
-          where: { id: product.id },
-          data: { stock_qty: product.stock_qty - item.qty }
-        });
+        // Decrement stock atomically, catching race conditions
+        try {
+          await tx.product.update({
+            where: { id: product.id, stock_qty: { gte: item.qty } },
+            data: { stock_qty: { decrement: item.qty } }
+          });
+        } catch (e: any) {
+          if (e.code === 'P2025') {
+            throw new Error(`Insufficient stock for product ${product.name} due to concurrent update`);
+          }
+          throw e;
+        }
 
         const lineTotal = product.price * item.qty;
         computedTotal += lineTotal;
@@ -133,8 +140,35 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
       return res.status(400).json({ error: 'Invalid status. Must be pending, fulfilled, or cancelled' });
     }
 
-    const existing = await db.order.findUnique({ where: { id: req.params.id } });
+    const existing = await db.order.findUnique({ 
+      where: { id: req.params.id },
+      include: { items: true }
+    });
     if (!existing) return res.status(404).json({ error: 'Order not found' });
+
+    if (existing.status === 'cancelled') {
+      return res.status(400).json({ error: 'Cannot modify a cancelled order' });
+    }
+    if (existing.status === 'fulfilled' && status === 'pending') {
+      return res.status(400).json({ error: 'Cannot change a fulfilled order back to pending' });
+    }
+
+    if (status === 'cancelled' && existing.status !== 'cancelled') {
+      const updated = await prisma.$transaction(async (tx) => {
+        // Restock items
+        for (const item of existing.items) {
+          await tx.product.update({
+            where: { id: item.product_id },
+            data: { stock_qty: { increment: item.qty } }
+          });
+        }
+        return tx.order.update({
+          where: { id: req.params.id },
+          data: { status }
+        });
+      });
+      return res.json({ order: updated });
+    }
 
     const updated = await db.order.update({
       where: { id: req.params.id },

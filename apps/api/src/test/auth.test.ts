@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../app';
 import { prisma } from '../db';
+import { vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 
 describe('Auth Endpoints (Layer 2)', () => {
@@ -30,7 +31,7 @@ describe('Auth Endpoints (Layer 2)', () => {
       .send(testUser);
 
     expect(res.status).toBe(201);
-    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.message).toBeDefined();
 
     const org = await prisma.organization.findFirst({ where: { name: testUser.orgName } });
     expect(org).not.toBeNull();
@@ -47,8 +48,8 @@ describe('Auth Endpoints (Layer 2)', () => {
       .post('/auth/signup')
       .send(testUser);
 
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe('Email already exists');
+    expect(res.status).toBe(201);
+    expect(res.body.message).toBeDefined();
   });
 
   it('should login and return tokens', async () => {
@@ -106,8 +107,9 @@ describe('Auth Endpoints (Layer 2)', () => {
   });
 
   it('should accept valid token on protected route', async () => {
-    const signupRes = await request(app).post('/auth/signup').send(testUser);
-    const token = signupRes.body.accessToken;
+    await request(app).post('/auth/signup').send(testUser);
+    const loginRes = await request(app).post('/auth/login').send({ email: testUser.email, password: testUser.password });
+    const token = loginRes.body.accessToken;
 
     const res = await request(app)
       .get('/auth/me')
@@ -119,11 +121,19 @@ describe('Auth Endpoints (Layer 2)', () => {
   });
 
   it('should succeed verify-email route with valid token', async () => {
+    let verifyToken = '';
+    const originalLog = console.log;
+    console.log = vi.fn((msg: string) => {
+      if (msg.includes('Sending verification email to test@example.com with token')) {
+        verifyToken = msg.split('token ')[1];
+      }
+      originalLog(msg);
+    });
+
     await request(app).post('/auth/signup').send(testUser);
-    const user = await prisma.user.findUnique({ where: { email: testUser.email } });
     
-    const verifySecret = (process.env.JWT_SECRET || 'super_secret_jwt_key') + 'email-verify';
-    const verifyToken = jwt.sign({ userId: user!.id, email: user!.email }, verifySecret, { expiresIn: '24h' });
+    // Restore console.log
+    console.log = originalLog;
 
     const res = await request(app).post('/auth/verify-email').send({ token: verifyToken });
     expect(res.status).toBe(200);

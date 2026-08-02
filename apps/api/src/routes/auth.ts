@@ -31,7 +31,9 @@ authRouter.post('/signup', async (req: Request, res: Response): Promise<any> => 
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return res.status(409).json({ error: 'Email already exists' });
+      // Send an email letting them know they already have an account (simulated)
+      console.log(`[Email Shortcut] Account already exists for ${email}. Sending "Already have an account" notice.`);
+      return res.status(201).json({ message: 'If successful, a verification email has been sent.' });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -54,24 +56,18 @@ authRouter.post('/signup', async (req: Request, res: Response): Promise<any> => 
 
     const user = org.users[0];
     
-    // Generate secure email verification token
-    const verifySecret = getJwtSecret() + 'email-verify';
+    // Generate secure email verification token using password_hash as secret
+    const verifySecret = getJwtSecret() + user.password_hash;
     const verifyToken = jwt.sign({ userId: user.id, email: user.email }, verifySecret, { expiresIn: '24h' });
     console.log(`[Email Shortcut] Sending verification email to ${email} with token ${verifyToken}`);
 
-    const accessToken = jwt.sign(
-      { userId: user.id, orgId: user.org_id, role: user.role },
-      getJwtSecret(),
-      { expiresIn: '15m' }
-    );
-    const refreshToken = jwt.sign(
-      { userId: user.id, type: 'refresh' },
-      getJwtSecret(),
-      { expiresIn: '7d' }
-    );
+    // Do NOT return the accessToken immediately since they need to verify email.
+    // Or we return it and let them use the app, but with a generic success message
+    // Actually the previous response was 201 with accessToken. To avoid enumeration via timing/response shape, 
+    // we should just return a generic message and make them login, or always return an empty token. 
+    // To minimize breaking changes, let's just return a success message.
+    return res.status(201).json({ message: 'If successful, a verification email has been sent.' });
 
-    res.cookie('refreshToken', refreshToken, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });
-    return res.status(201).json({ accessToken });
   } catch (error: any) {
     console.error(error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -175,16 +171,20 @@ authRouter.post('/verify-email', async (req: Request, res: Response): Promise<an
       return res.status(400).json({ error: 'User not found' });
     }
 
-    const verifySecret = getJwtSecret() + 'email-verify';
+    const verifySecret = getJwtSecret() + user.password_hash;
     try {
       jwt.verify(token, verifySecret);
-    } catch (e) {
-      return res.status(400).json({ error: 'Invalid or expired verification token' });
+    } catch (e: any) {
+      console.error('JWT Verify Error:', e);
+      return res.status(400).json({ error: 'Invalid or expired verification token', details: e.message });
     }
 
-    // Usually we would update `email_verified: true` in the DB here, 
-    // but since it's not in the schema, we just acknowledge the token is valid.
-    console.log(`[Email Shortcut] Received valid verification for user ${user.id}`);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email_verified: true }
+    });
+
+    console.log(`[Email Shortcut] Email verified for user ${user.id}`);
     return res.json({ message: 'Email verified' });
   } catch (error) {
     console.error(error);
