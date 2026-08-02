@@ -167,7 +167,7 @@ describe('Layer 6 - Stripe Billing & Product Caps', () => {
 
   describe('Stripe Webhooks', () => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mock';
-    const stripe = new Stripe('sk_test_mock', { apiVersion: '2025-01-27.acacia' });
+    const stripe = new Stripe('sk_test_mock', { apiVersion: '2025-01-27.acacia' as any });
 
     const sendWebhook = async (eventType: string, dataObject: any) => {
       const payload = {

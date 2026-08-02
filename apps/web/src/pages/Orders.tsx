@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
 import { queryClient } from '../lib/queryClient';
-import { StatusBadge } from '../components/StatusBadge';
 import { SkeletonRow } from '../components/SkeletonRow';
 import { StatusSelect } from '../components/StatusSelect';
 import { ChevronDown, ChevronRight, Plus, Trash2, Download } from 'lucide-react';
@@ -349,7 +348,7 @@ export function Orders() {
                             </tr>
                           </thead>
                           <tbody>
-                            {o.items.map(item => (
+                            {o.items.map((item: any) => (
                               <tr key={item.id} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '0.5rem' }}>
                                   <div style={{ fontWeight: 600 }}>{item.product?.name || 'Unknown Product'}</div>

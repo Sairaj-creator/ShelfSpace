@@ -5,7 +5,7 @@ import { prisma } from '../db';
 export const dashboardRouter = Router();
 
 dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response) => {
-  const orgId = req.orgId!;
+  const orgId = (req as any).orgId!;
   const db = (req as any).db;
   
   // 1. Fetch Org details for banner
@@ -34,8 +34,8 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
   });
 
   const lowStockProducts = allProducts
-    .filter(p => p.stock_qty < p.low_stock_threshold)
-    .sort((a, b) => a.stock_qty - b.stock_qty);
+    .filter((p: any) => p.stock_qty < p.low_stock_threshold)
+    .sort((a: any, b: any) => a.stock_qty - b.stock_qty);
 
   // 3. Aggregate Revenue for current month
   const startOfMonth = new Date();
@@ -73,7 +73,7 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
   // Zero-fill the 30-day series
   const daily_revenue = [];
   const rawDataMap = new Map(
-    rawDailyRevenue.map(row => [
+    rawDailyRevenue.map((row: any) => [
       row.date.toISOString().split('T')[0],
       Number(row.revenue_cents) // Critical: convert bigint to number for JSON serialization
     ])

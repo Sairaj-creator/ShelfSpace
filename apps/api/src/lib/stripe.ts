@@ -6,5 +6,5 @@ if (!apiKey) {
 }
 
 export const stripe = new Stripe(apiKey, {
-  apiVersion: '2025-01-27.acacia',
+  apiVersion: '2025-01-27.acacia' as any,
 });

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { clearTokens, apiFetch } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
 import { useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 
 export function AppLayout() {

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { apiFetch, setAccessToken } from '../lib/api';
+import { Link } from 'react-router-dom';
+import { apiFetch } from '../lib/api';
 
 export function Signup() {
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [orgName, setOrgName] = useState('');

@@ -53,7 +53,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
             dx={-10}
           />
           <Tooltip 
-            formatter={(value: number) => [formatCurrency(value), 'Revenue']}
+            formatter={(value: any) => [formatCurrency(Number(value) || 0), 'Revenue']}
             labelStyle={{ color: 'var(--text-main)', fontWeight: 'bold' }}
             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
           />

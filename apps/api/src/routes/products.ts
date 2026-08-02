@@ -133,7 +133,7 @@ productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
     const product = await db.product.create({
       data: {
         name,
-        sku,
+        sku: String(sku).trim().toUpperCase(),
         price,
         stock_qty: stock_qty || 0,
         low_stock_threshold: low_stock_threshold !== undefined ? low_stock_threshold : 5,
@@ -198,7 +198,7 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
           data: {
             org_id: orgId,
             name: String(item.name).trim(),
-            sku: String(item.sku).trim(),
+            sku: String(item.sku).trim().toUpperCase(),
             price: Math.round(Number(item.price)),
             stock_qty: item.stock_qty !== undefined ? Number(item.stock_qty) : 0,
             low_stock_threshold: item.low_stock_threshold !== undefined ? Number(item.low_stock_threshold) : 5,
@@ -251,7 +251,7 @@ productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => 
         where: { id: req.params.id },
         data: {
           name: name !== undefined ? name : existing.name,
-          sku: sku !== undefined ? sku : existing.sku,
+          sku: sku !== undefined ? String(sku).trim().toUpperCase() : existing.sku,
           price: price !== undefined ? price : existing.price,
           stock_qty: stock_qty !== undefined ? stock_qty : existing.stock_qty,
           low_stock_threshold: low_stock_threshold !== undefined ? low_stock_threshold : existing.low_stock_threshold,
