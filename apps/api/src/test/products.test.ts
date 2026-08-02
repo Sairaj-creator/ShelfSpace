@@ -92,4 +92,19 @@ describe('Products API', () => {
     expect(res.body.product.low_stock_threshold).toBe(15);
     expect(res.body.product.stock_qty).toBe(20); // Make sure other fields didn't change
   });
+
+  it('rejects product creation with a duplicate SKU', async () => {
+    await request(app)
+      .post('/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Product 1', sku: 'PA-001', price: 1000, stock_qty: 10 });
+
+    const res = await request(app)
+      .post('/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Product 2', sku: 'pa-001', price: 1500, stock_qty: 5 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('A product with this SKU already exists');
+  });
 });

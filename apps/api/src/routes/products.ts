@@ -141,8 +141,11 @@ productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
     });
 
     return res.status(201).json({ product });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: 'A product with this SKU already exists' });
+    }
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -272,8 +275,11 @@ productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => 
     });
 
     return res.json({ product });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: 'A product with this SKU already exists' });
+    }
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
