@@ -49,6 +49,9 @@ export function CommandPalette() {
               <Command.Item onSelect={() => runCommand(() => navigate('/orders'))}>
                 Orders
               </Command.Item>
+              <Command.Item onSelect={() => runCommand(() => navigate('/settings'))}>
+                Settings & Team
+              </Command.Item>
             </Command.Group>
 
             <Command.Group heading="Account">

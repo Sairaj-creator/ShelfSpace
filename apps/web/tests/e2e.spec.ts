@@ -80,7 +80,7 @@ test.describe('Critical Path: Signup -> Product -> Order -> Dashboard -> Stripe 
     await page.click('text=Create Order');
     await page.fill('label:has-text("Customer Name") + input', 'E2E Customer');
     // Product should be auto-selected (it's the only one)
-    await page.fill('label:has-text("Quantity") + input', '2');
+    await page.fill('input[type="number"]', '2');
     await page.click('button:has-text("Submit Order")');
 
     // Verify order shows up

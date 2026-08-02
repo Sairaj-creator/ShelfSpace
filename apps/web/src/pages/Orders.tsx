@@ -6,7 +6,8 @@ import { queryKeys } from '../lib/queryKeys';
 import { queryClient } from '../lib/queryClient';
 import { StatusBadge } from '../components/StatusBadge';
 import { SkeletonRow } from '../components/SkeletonRow';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { StatusSelect } from '../components/StatusSelect';
+import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 
 interface OrderItem {
   id: string;
@@ -39,8 +40,9 @@ export function Orders() {
 
   // Form state
   const [customerName, setCustomerName] = useState('');
-  const [selectedProductId, setSelectedProductId] = useState('');
-  const [qty, setQty] = useState('1');
+  const [orderItems, setOrderItems] = useState<Array<{ product_id: string; qty: string }>>([
+    { product_id: '', qty: '1' }
+  ]);
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -67,10 +69,10 @@ export function Orders() {
   });
 
   React.useEffect(() => {
-    if (availableProducts.length > 0 && !selectedProductId) {
-      setSelectedProductId(availableProducts[0].id);
+    if (availableProducts.length > 0) {
+      setOrderItems(prev => prev.map(item => item.product_id ? item : { ...item, product_id: availableProducts[0].id }));
     }
-  }, [availableProducts, selectedProductId]);
+  }, [availableProducts]);
 
   const createMutation = useMutation({
     mutationFn: async (newOrder: any) => {
@@ -89,7 +91,7 @@ export function Orders() {
       toast.success('Order created successfully');
       setShowForm(false);
       setCustomerName('');
-      setQty('1');
+      setOrderItems([{ product_id: availableProducts[0]?.id || '', qty: '1' }]);
       queryClient.invalidateQueries({ queryKey: queryKeys.orders });
       queryClient.invalidateQueries({ queryKey: queryKeys.products });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboardMetrics });
@@ -121,20 +123,53 @@ export function Orders() {
     }
   });
 
+  const handleAddItem = () => {
+    setOrderItems(prev => [...prev, { product_id: availableProducts[0]?.id || '', qty: '1' }]);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    if (orderItems.length === 1) return;
+    setOrderItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleItemChange = (index: number, field: 'product_id' | 'qty', value: string) => {
+    setOrderItems(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
-    if (!selectedProductId) {
-      setFormError('Please select a product');
+    if (!customerName.trim()) {
+      setFormError('Customer name is required');
       return;
     }
 
+    const invalidItem = orderItems.find(item => !item.product_id || parseInt(item.qty, 10) <= 0 || isNaN(parseInt(item.qty, 10)));
+    if (invalidItem) {
+      setFormError('Please select valid products and positive quantities for all lines.');
+      return;
+    }
+
+    // UX Enhancement: Merge duplicate product_ids before submission
+    const mergedItems = orderItems.reduce((acc, current) => {
+      const existing = acc.find(i => i.product_id === current.product_id);
+      const qtyNum = parseInt(current.qty, 10);
+      if (existing) {
+        existing.qty += qtyNum;
+      } else {
+        acc.push({ product_id: current.product_id, qty: qtyNum });
+      }
+      return acc;
+    }, [] as Array<{ product_id: string; qty: number }>);
+
     createMutation.mutate({
       customer_name: customerName,
-      items: [
-        { product_id: selectedProductId, qty: parseInt(qty, 10) }
-      ]
+      items: mergedItems
     });
   };
 
@@ -165,24 +200,59 @@ export function Orders() {
             <div className="alert alert-warning">You need to create products before you can create an order.</div>
           ) : (
             <form onSubmit={handleCreate}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
-                <div className="input-group">
-                  <label>Customer Name</label>
-                  <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} required />
-                </div>
-                <div className="input-group">
-                  <label>Product</label>
-                  <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)} required>
-                    {availableProducts.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (${(p.price / 100).toFixed(2)})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Quantity</label>
-                  <input type="number" min="1" value={qty} onChange={e => setQty(e.target.value)} required />
-                </div>
+              <div className="input-group" style={{ marginBottom: '1.25rem' }}>
+                <label>Customer Name</label>
+                <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} required />
               </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    Line Items
+                  </label>
+                  <button type="button" onClick={handleAddItem} className="btn-outline" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Plus size={14} /> Add Line
+                  </button>
+                </div>
+
+                {orderItems.map((item, index) => (
+                  <div key={index} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <div style={{ flex: 2 }}>
+                      <select 
+                        value={item.product_id} 
+                        onChange={e => handleItemChange(index, 'product_id', e.target.value)} 
+                        required
+                        style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--border-tan)', borderRadius: '0.25rem' }}
+                      >
+                        {availableProducts.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} (${(p.price / 100).toFixed(2)})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        value={item.qty} 
+                        onChange={e => handleItemChange(index, 'qty', e.target.value)} 
+                        required 
+                        style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--border-tan)', borderRadius: '0.25rem' }}
+                      />
+                    </div>
+                    {orderItems.length > 1 && (
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveItem(index)}
+                        style={{ background: 'none', border: 'none', color: 'var(--accent-rust)', cursor: 'pointer', padding: '0.4rem' }}
+                        title="Remove line item"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
               <button type="submit" className="btn-primary" style={{ marginTop: '1.25rem' }} disabled={createMutation.isPending}>
                 {createMutation.isPending ? 'Saving...' : 'Submit Order'}
               </button>
@@ -235,19 +305,11 @@ export function Orders() {
                       {o.customer_name}
                     </td>
                     <td onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <StatusBadge status={o.status} />
-                        <select 
-                          value={o.status}
-                          onChange={(e) => updateStatusMutation.mutate({ id: o.id, status: e.target.value })}
-                          style={{ padding: '0.1rem', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                          disabled={updateStatusMutation.isPending}
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="fulfilled">Fulfilled</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </div>
+                      <StatusSelect 
+                        status={o.status}
+                        onChange={(newStatus) => updateStatusMutation.mutate({ id: o.id, status: newStatus })}
+                        disabled={updateStatusMutation.isPending}
+                      />
                     </td>
                     <td className="number-tabular" style={{ fontWeight: 600 }}>${(o.total / 100).toFixed(2)}</td>
                     <td style={{ color: 'var(--text-muted)' }}>{new Date(o.created_at).toLocaleDateString()}</td>

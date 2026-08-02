@@ -9,7 +9,6 @@ import { CommandPalette } from './CommandPalette';
 export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const location = useLocation();
   const [isInitializing, setIsInitializing] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -21,15 +20,9 @@ export function AppLayout() {
   useEffect(() => {
     // Attempt to verify session (this will trigger a silent refresh if needed)
     apiFetch('/auth/me')
-      .then(res => {
-        if (!res.ok) {
-          clearTokens();
-          navigate('/login');
-        }
-      })
-      .catch(() => navigate('/login'))
+      .catch((e) => console.error('Session verification failed', e))
       .finally(() => setIsInitializing(false));
-  }, [navigate]);
+  }, []);
 
   const { data: metrics } = useQuery({
     queryKey: queryKeys.dashboardMetrics,
@@ -95,6 +88,13 @@ export function AppLayout() {
           >
             <span className="manifest-nav-num">03.</span>
             <span>Orders</span>
+          </Link>
+          <Link 
+            to="/settings" 
+            className={`manifest-nav-item ${location.pathname === '/settings' ? 'active' : ''}`}
+          >
+            <span className="manifest-nav-num">04.</span>
+            <span>Settings</span>
           </Link>
         </nav>
 
