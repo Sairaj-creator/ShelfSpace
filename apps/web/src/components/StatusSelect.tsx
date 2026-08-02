@@ -18,7 +18,16 @@ export function StatusSelect({ status, onChange, disabled }: StatusSelectProps) 
   const [focusedIndex, setFocusedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const isTerminal = status === 'fulfilled' || status === 'cancelled' || disabled;
+  const isTerminal = status === 'cancelled' || disabled;
+
+  // Filter allowed options based on state machine:
+  // - pending: can become fulfilled or cancelled
+  // - fulfilled: can become cancelled, but CANNOT go back to pending
+  // - cancelled: terminal
+  const allowedOptions = STATUS_OPTIONS.filter((opt) => {
+    if (status === 'fulfilled' && opt.value === 'pending') return false;
+    return true;
+  });
 
   // Handle click outside
   useEffect(() => {
@@ -38,7 +47,7 @@ export function StatusSelect({ status, onChange, disabled }: StatusSelectProps) 
       if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
         e.preventDefault();
         setIsOpen(true);
-        const idx = STATUS_OPTIONS.findIndex((opt) => opt.value === status);
+        const idx = allowedOptions.findIndex((opt) => opt.value === status);
         setFocusedIndex(idx >= 0 ? idx : 0);
       }
       return;
@@ -47,16 +56,16 @@ export function StatusSelect({ status, onChange, disabled }: StatusSelectProps) 
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setFocusedIndex((prev) => (prev + 1) % STATUS_OPTIONS.length);
+        setFocusedIndex((prev) => (prev + 1) % allowedOptions.length);
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setFocusedIndex((prev) => (prev - 1 + STATUS_OPTIONS.length) % STATUS_OPTIONS.length);
+        setFocusedIndex((prev) => (prev - 1 + allowedOptions.length) % allowedOptions.length);
         break;
       case 'Enter':
       case ' ':
         e.preventDefault();
-        const selected = STATUS_OPTIONS[focusedIndex];
+        const selected = allowedOptions[focusedIndex];
         if (selected && selected.value !== status) {
           onChange(selected.value);
         }
@@ -131,7 +140,7 @@ export function StatusSelect({ status, onChange, disabled }: StatusSelectProps) 
             minWidth: '110px',
           }}
         >
-          {STATUS_OPTIONS.map((opt, idx) => (
+          {allowedOptions.map((opt, idx) => (
             <li
               key={opt.value}
               role="option"
