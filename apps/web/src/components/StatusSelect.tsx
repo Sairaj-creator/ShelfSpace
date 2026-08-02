@@ -73,7 +73,11 @@ export function StatusSelect({ status, onChange, disabled }: StatusSelectProps) 
 
   if (isTerminal) {
     return (
-      <div style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.85 }} title="Terminal status cannot be changed">
+      <div 
+        style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.85 }} 
+        title="Terminal status cannot be changed"
+        aria-disabled="true"
+      >
         <StatusBadge status={status} />
       </div>
     );
