@@ -202,7 +202,7 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
             price: Math.round(Number(item.price)),
             stock_qty: item.stock_qty !== undefined ? Number(item.stock_qty) : 0,
             low_stock_threshold: item.low_stock_threshold !== undefined ? Number(item.low_stock_threshold) : 5,
-          },
+          } as any,
         });
         inserted.push(p);
       }
@@ -255,7 +255,7 @@ productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => 
           price: price !== undefined ? price : existing.price,
           stock_qty: stock_qty !== undefined ? stock_qty : existing.stock_qty,
           low_stock_threshold: low_stock_threshold !== undefined ? low_stock_threshold : existing.low_stock_threshold,
-        }
+        } as any
       });
 
       if (isStockEdited) {
