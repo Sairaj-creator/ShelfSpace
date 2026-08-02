@@ -78,7 +78,7 @@ describe('Products API', () => {
         price: 1500,
         stock_qty: 20,
         low_stock_threshold: 10
-      }
+      } as any
     });
 
     const res = await request(app)
