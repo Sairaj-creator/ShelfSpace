@@ -7,7 +7,7 @@ import { queryClient } from '../lib/queryClient';
 import { StatusBadge } from '../components/StatusBadge';
 import { SkeletonRow } from '../components/SkeletonRow';
 import { StatusSelect } from '../components/StatusSelect';
-import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Trash2, Download } from 'lucide-react';
 
 interface OrderItem {
   id: string;
@@ -140,6 +140,22 @@ export function Orders() {
     });
   };
 
+  const handleExportCsv = async () => {
+    const res = await apiFetch('/orders/export');
+    if (!res.ok) {
+      toast.error('Failed to export order manifest');
+      return;
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'orders_manifest.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -184,9 +200,14 @@ export function Orders() {
           <h2>Orders</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Customer order log and fulfillments</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="btn-primary">
-          {showForm ? 'Cancel' : 'Create Order'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={handleExportCsv} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Download size={16} /> Export Manifest CSV
+          </button>
+          <button onClick={() => setShowForm(!showForm)} className="btn-primary">
+            {showForm ? 'Cancel' : 'Create Order'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="alert alert-danger">{(error as Error).message}</div>}

@@ -6,7 +6,8 @@ import { queryKeys } from '../lib/queryKeys';
 import { queryClient } from '../lib/queryClient';
 import { EditableStockCell } from '../components/EditableStockCell';
 import { SkeletonRow } from '../components/SkeletonRow';
-import { Trash2 } from 'lucide-react';
+import { CsvImportModal } from '../components/CsvImportModal';
+import { Trash2, Upload, Download } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -28,6 +29,7 @@ export function Products() {
   const [price, setPrice] = useState('');
   const [stockQty, setStockQty] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [formError, setFormError] = useState('');
 
   const { data: products = [], isLoading, error } = useQuery({
@@ -132,6 +134,22 @@ export function Products() {
     }
   });
 
+  const handleExportCsv = async () => {
+    const res = await apiFetch('/products/export');
+    if (!res.ok) {
+      toast.error('Failed to export products');
+      return;
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'products_inventory.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -176,10 +194,20 @@ export function Products() {
           <h2>Products</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Active SKU listings and stock ledger</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="btn-primary">
-          {showForm ? 'Cancel' : 'Add Product'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={handleExportCsv} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Download size={16} /> Export CSV
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Upload size={16} /> Import CSV
+          </button>
+          <button onClick={() => setShowForm(!showForm)} className="btn-primary">
+            {showForm ? 'Cancel' : 'Add Product'}
+          </button>
+        </div>
       </div>
+
+      <CsvImportModal isOpen={showImportModal} onClose={() => setShowImportModal(false)} />
 
       {error && <div className="alert alert-danger">{(error as Error).message}</div>}
 

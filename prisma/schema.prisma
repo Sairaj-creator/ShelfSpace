@@ -35,6 +35,7 @@ model Organization {
   users    User[]
   products Product[]
   orders   Order[]
+  audit_logs AuditLog[]
 
   @@map("organizations")
 }
@@ -100,4 +101,18 @@ model OrderItem {
   @@index([order_id])
   @@index([product_id])
   @@map("order_items")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  org_id      String
+  actor_id    String
+  action      String   // USER_INVITED, USER_REMOVED, ORDER_CANCELLED, STOCK_UPDATED, BULK_PRODUCTS_IMPORTED
+  target_id   String?
+  details     String?  // JSON context
+  created_at  DateTime @default(now())
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  @@index([org_id])
+  @@map("audit_logs")
 }

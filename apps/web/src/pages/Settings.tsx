@@ -4,7 +4,16 @@ import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
 import { queryClient } from '../lib/queryClient';
-import { Copy, Trash2, Mail, ShieldCheck, UserPlus } from 'lucide-react';
+import { Copy, Trash2, Mail, ShieldCheck, UserPlus, History, Sun, Moon, ChevronLeft, ChevronRight } from 'lucide-react';
+
+interface AuditLogEntry {
+  id: string;
+  actor_id: string;
+  action: string;
+  target_id: string | null;
+  details: string | null;
+  created_at: string;
+}
 
 interface User {
   id: string;
@@ -16,6 +25,21 @@ interface User {
 export function Settings() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [auditPage, setAuditPage] = useState(1);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+  });
+
+  const toggleTheme = (newTheme: 'light' | 'dark') => {
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+    toast.success(`Theme switched to ${newTheme} mode`);
+  };
+
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   // Fetch current user details
   const { data: meData } = useQuery({
@@ -50,6 +74,17 @@ export function Settings() {
       if (!res.ok) throw new Error('Failed to load metrics');
       return res.json();
     },
+  });
+
+  // Fetch Audit Logs (Owner only)
+  const { data: auditData, isLoading: auditLoading } = useQuery({
+    queryKey: ['auditLogs', auditPage],
+    queryFn: async () => {
+      const res = await apiFetch(`/audit-logs?page=${auditPage}&limit=10`);
+      if (!res.ok) throw new Error('Failed to load audit logs');
+      return res.json();
+    },
+    enabled: isOwner,
   });
 
   // Invite mutation
@@ -270,6 +305,109 @@ export function Settings() {
           </div>
         )}
       </div>
+
+      {/* Theme Engine Settings */}
+      <div className="card" style={{ marginTop: '2rem' }}>
+        <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />} Visual Theme Engine
+        </h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+          Customize your workspace interface aesthetic.
+        </p>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button 
+            onClick={() => toggleTheme('light')} 
+            className={`btn-outline ${theme === 'light' ? 'btn-primary' : ''}`}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <Sun size={16} /> Light Mode
+          </button>
+          <button 
+            onClick={() => toggleTheme('dark')} 
+            className={`btn-outline ${theme === 'dark' ? 'btn-primary' : ''}`}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <Moon size={16} /> Dark Mode
+          </button>
+        </div>
+      </div>
+
+      {/* Audit Log Viewer (Owner Only) */}
+      {isOwner && (
+        <div className="card" style={{ marginTop: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <History size={18} /> Immutable Audit Logs
+            </h3>
+            {auditData && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Page {auditData.page} of {auditData.total_pages} ({auditData.total} total events)
+              </span>
+            )}
+          </div>
+
+          {auditLoading ? (
+            <p style={{ color: 'var(--text-muted)' }}>Loading audit records...</p>
+          ) : !auditData || auditData.audit_logs.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>No audit events recorded yet.</p>
+          ) : (
+            <div>
+              <div style={{ overflowX: 'auto', width: '100%' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--bg-paper)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem' }}>Timestamp</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem' }}>Action</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem' }}>Actor ID</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem' }}>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditData.audit_logs.map((log: AuditLogEntry) => (
+                      <tr key={log.id} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)' }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '0.5rem 0.75rem' }}>
+                          <code style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-ledger)' }}>
+                            {log.action}
+                          </code>
+                        </td>
+                        <td style={{ padding: '0.5rem 0.75rem' }}>
+                          <code style={{ fontSize: '0.75rem' }}>{log.actor_id.slice(0, 8)}...</code>
+                        </td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)' }}>
+                          {log.details || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Audit Log Pagination Controls */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
+                <button 
+                  disabled={auditPage <= 1} 
+                  onClick={() => setAuditPage(p => Math.max(1, p - 1))}
+                  className="btn-outline"
+                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                >
+                  <ChevronLeft size={14} /> Previous
+                </button>
+                <button 
+                  disabled={auditData && auditPage >= auditData.total_pages} 
+                  onClick={() => setAuditPage(p => p + 1)}
+                  className="btn-outline"
+                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                >
+                  Next <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

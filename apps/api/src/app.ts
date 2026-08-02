@@ -7,6 +7,7 @@ import { ordersRouter } from './routes/orders';
 import { usersRouter } from './routes/users';
 import { billingRouter } from './routes/billing';
 import { dashboardRouter } from './routes/dashboard';
+import { auditRouter } from './routes/audit';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
@@ -31,6 +32,9 @@ app.use(cors({
 // Webhooks require raw body parsing for Stripe signature verification
 app.use('/billing/webhook', express.raw({ type: 'application/json' }));
 
+// Bulk product uploads require larger JSON payload body parsing
+app.use('/products/bulk', express.json({ limit: '2mb' }));
+
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
@@ -40,6 +44,7 @@ app.use('/orders', ordersRouter);
 app.use('/dashboard', dashboardRouter);
 app.use('/users', usersRouter);
 app.use('/billing', billingRouter);
+app.use('/audit-logs', auditRouter);
 
 // Layer 0 - Health check
 app.get('/health', (req: Request, res: Response) => {

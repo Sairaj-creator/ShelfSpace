@@ -3,6 +3,9 @@ import { requireAuth } from '../middleware/tenant';
 import { requireRole } from '../middleware/role';
 import { Role } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../db';
+import { createAuditEntry } from '../services/audit';
+import { EmailService } from '../services/email';
 
 export const usersRouter = Router();
 
@@ -42,8 +45,19 @@ usersRouter.post('/invite', requireRole(Role.owner), async (req: Request, res: R
       { expiresIn: '24h' }
     );
 
-    // Stub email send
-    console.log(`[Email Shortcut] Sending staff invite email to ${email} with token ${token}`);
+    const currentUser = (req as any).user;
+
+    await prisma.$transaction(async (tx) => {
+      await createAuditEntry(tx, {
+        orgId,
+        actorId: currentUser.userId,
+        action: 'USER_INVITED',
+        details: { invited_email: email }
+      });
+    });
+
+    // Send email via service (decoupled, non-blocking)
+    EmailService.sendInviteEmail(email, token);
 
     return res.json({ message: 'Invite sent successfully', token }); // token returned for tests
   } catch (error) {
@@ -68,7 +82,18 @@ usersRouter.delete('/:id', requireRole(Role.owner), async (req: Request, res: Re
       return res.status(404).json({ error: 'User not found' });
     }
 
-    await db.user.delete({ where: { id: userId } });
+    const orgId = (req as any).orgId;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.delete({ where: { id: userId } });
+      await createAuditEntry(tx, {
+        orgId,
+        actorId: currentUser.userId,
+        action: 'USER_REMOVED',
+        targetId: userId,
+        details: { removed_email: userToDelete.email }
+      });
+    });
 
     return res.json({ success: true });
   } catch (error) {

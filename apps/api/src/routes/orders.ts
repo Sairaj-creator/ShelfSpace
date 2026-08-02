@@ -10,20 +10,100 @@ ordersRouter.use(requireAuth);
 // Alternatively, since transaction clients are their own object, we can't easily use scopedPrisma within a $transaction block out-of-the-box unless we recreate it.
 // We'll use the raw prisma client but rigidly enforce req.orgId.
 import { prisma } from '../db';
+import { createAuditEntry } from '../services/audit';
+import { formatRowToCsv } from '../utils/csv';
 
 // GET /orders
 ordersRouter.get('/', async (req: Request, res: Response): Promise<any> => {
   try {
     const db = (req as any).db;
+    const pageParam = req.query.page as string;
+    const limitParam = req.query.limit as string;
+    const statusParam = req.query.status as string;
+
+    if (!pageParam && !limitParam && !statusParam) {
+      const orders = await db.order.findMany({
+        orderBy: { created_at: 'desc' },
+        include: { 
+          items: {
+            include: { product: true }
+          }
+        }
+      });
+      return res.json({ orders });
+    }
+
+    const page = Math.max(1, parseInt(pageParam || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(limitParam || '20', 10)));
+    const skip = (page - 1) * limit;
+
+    const where: any = statusParam ? { status: statusParam } : {};
+
+    const [orders, total] = await Promise.all([
+      db.order.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+        include: { 
+          items: {
+            include: { product: true }
+          }
+        }
+      }),
+      db.order.count({ where }),
+    ]);
+
+    return res.json({
+      orders,
+      total,
+      page,
+      limit,
+      total_pages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /orders/export (OWASP-sanitized denormalized line-item CSV export)
+ordersRouter.get('/export', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const db = (req as any).db;
     const orders = await db.order.findMany({
       orderBy: { created_at: 'desc' },
-      include: { 
+      include: {
         items: {
           include: { product: true }
         }
       }
     });
-    return res.json({ orders });
+
+    const header = ['Order ID', 'Customer Name', 'Order Status', 'Order Date', 'Product SKU', 'Product Name', 'Quantity', 'Unit Price ($)', 'Line Total ($)'];
+    const rows: Array<any> = [];
+
+    for (const o of orders) {
+      for (const item of o.items) {
+        rows.push([
+          o.id,
+          o.customer_name,
+          o.status,
+          o.created_at.toISOString(),
+          item.product?.sku || item.product_id,
+          item.product?.name || 'Unknown Product',
+          item.qty,
+          (item.unit_price / 100).toFixed(2),
+          ((item.qty * item.unit_price) / 100).toFixed(2),
+        ]);
+      }
+    }
+
+    const csvContent = [formatRowToCsv(header), ...rows.map(formatRowToCsv)].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="orders_manifest.csv"');
+    return res.status(200).send(csvContent);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -153,6 +233,9 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
       return res.status(400).json({ error: 'Cannot change a fulfilled order back to pending' });
     }
 
+    const currentUser = (req as any).user;
+    const orgId = (req as any).orgId;
+
     if (status === 'cancelled' && existing.status !== 'cancelled') {
       const updated = await prisma.$transaction(async (tx) => {
         // Restock items
@@ -162,17 +245,31 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
             data: { stock_qty: { increment: item.qty } }
           });
         }
-        return tx.order.update({
+
+        const resOrder = await tx.order.update({
           where: { id: req.params.id },
           data: { status }
         });
+
+        await createAuditEntry(tx, {
+          orgId,
+          actorId: currentUser.userId,
+          action: 'ORDER_CANCELLED',
+          targetId: req.params.id,
+          details: { restocked_items_count: existing.items.length }
+        });
+
+        return resOrder;
       });
       return res.json({ order: updated });
     }
 
-    const updated = await db.order.update({
-      where: { id: req.params.id },
-      data: { status }
+    const updated = await prisma.$transaction(async (tx) => {
+      const resOrder = await tx.order.update({
+        where: { id: req.params.id },
+        data: { status }
+      });
+      return resOrder;
     });
 
     return res.json({ order: updated });
