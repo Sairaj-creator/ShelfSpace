@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../app';
 import { prisma } from '../db';
 import { Role } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { EmailService } from '../services/email';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
 
@@ -73,14 +74,21 @@ describe('Layer 5 - Roles & Permissions', () => {
     });
 
     it('should allow owner to invite users', async () => {
+      // Capture the invite token via the email service spy (token is no longer in the response body)
+      const sendInviteSpy = vi.spyOn(EmailService, 'sendInviteEmail').mockImplementation(async (email: string, token: string) => {
+        inviteToken = token;
+      });
+
       const res = await request(app)
         .post('/users/invite')
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({ email: 'newstaff@roles.com' });
       
       expect(res.status).toBe(200);
-      expect(res.body.token).toBeDefined();
-      inviteToken = res.body.token; // Save for next test
+      expect(res.body.token).toBeUndefined(); // Token must NOT appear in response body
+      expect(inviteToken).toBeDefined(); // Token captured via email service
+
+      sendInviteSpy.mockRestore();
     });
 
     it('should allow invited staff to accept invite and create user', async () => {

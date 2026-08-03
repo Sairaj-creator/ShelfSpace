@@ -59,7 +59,7 @@ usersRouter.post('/invite', requireRole(Role.owner), async (req: Request, res: R
     // Send email via service (decoupled, non-blocking)
     EmailService.sendInviteEmail(email, token);
 
-    return res.json({ message: 'Invite sent successfully', token }); // token returned for tests
+    return res.json({ message: 'Invite sent successfully' });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Internal server error' });

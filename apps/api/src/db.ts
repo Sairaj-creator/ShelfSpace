@@ -7,7 +7,7 @@ export const scopedPrisma = (orgId: string) => {
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
-          const tenantModels = ['User', 'Product', 'Order'];
+          const tenantModels = ['User', 'Product', 'Order', 'AuditLog'];
           const a = args as any;
           
           if (tenantModels.includes(model)) {

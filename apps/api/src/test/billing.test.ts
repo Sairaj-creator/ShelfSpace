@@ -7,12 +7,8 @@ import Stripe from 'stripe';
 import { stripe } from '../lib/stripe';
 import { vi } from 'vitest';
 
-// Ensure test env defaults are set before stripe module execution
-process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_mock';
-process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mock';
-process.env.STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID || 'price_mock';
-
 vi.spyOn(stripe.checkout.sessions, 'create').mockResolvedValue({ url: 'https://checkout.stripe.com/mock-session' } as any);
+
 
 let ownerToken: string;
 let staffToken: string;
@@ -30,6 +26,12 @@ beforeAll(async () => {
   await request(app)
     .post('/auth/signup')
     .send({ email: 'billingowner@test.com', password: 'password123', orgName: 'Billing Org' });
+
+  // Pre-verify email so the login call below passes the email_verified gate
+  await prisma.user.update({
+    where: { email: 'billingowner@test.com' },
+    data: { email_verified: true },
+  });
 
   const loginRes = await request(app)
     .post('/auth/login')

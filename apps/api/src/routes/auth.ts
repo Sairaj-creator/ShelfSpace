@@ -91,6 +91,10 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<any> => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    if (!user.email_verified) {
+      return res.status(403).json({ error: 'Please verify your email before logging in.' });
+    }
+
     const accessToken = jwt.sign(
       { userId: user.id, orgId: user.org_id, role: user.role },
       getJwtSecret(),

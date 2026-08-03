@@ -54,6 +54,8 @@ describe('Auth Endpoints (Layer 2)', () => {
 
   it('should login and return tokens', async () => {
     await request(app).post('/auth/signup').send(testUser);
+    // Pre-verify email so login passes the email_verified gate
+    await prisma.user.update({ where: { email: testUser.email }, data: { email_verified: true } });
 
     const res = await request(app)
       .post('/auth/login')
@@ -63,6 +65,18 @@ describe('Auth Endpoints (Layer 2)', () => {
     expect(res.body.accessToken).toBeDefined();
     // Check for refresh token cookie
     expect(res.headers['set-cookie'][0]).toMatch(/refreshToken=/);
+  });
+
+  it('should reject login for unverified user with 403', async () => {
+    await request(app).post('/auth/signup').send(testUser);
+    // Do NOT verify email — user.email_verified remains false
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: testUser.email, password: testUser.password });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/verify your email/i);
   });
 
   it('should reject login with wrong password', async () => {
@@ -77,6 +91,7 @@ describe('Auth Endpoints (Layer 2)', () => {
 
   it('should refresh access token using refresh token', async () => {
     await request(app).post('/auth/signup').send(testUser);
+    await prisma.user.update({ where: { email: testUser.email }, data: { email_verified: true } });
     const loginRes = await request(app).post('/auth/login').send({ email: testUser.email, password: testUser.password });
     
     const cookie = loginRes.headers['set-cookie'][0];
@@ -87,7 +102,23 @@ describe('Auth Endpoints (Layer 2)', () => {
 
     expect(refreshRes.status).toBe(200);
     expect(refreshRes.body.accessToken).toBeDefined();
-    // The new token should be different or at least valid
+  });
+
+  it('should reject a refresh token presented as a Bearer access token', async () => {
+    await request(app).post('/auth/signup').send(testUser);
+    await prisma.user.update({ where: { email: testUser.email }, data: { email_verified: true } });
+    const loginRes = await request(app).post('/auth/login').send({ email: testUser.email, password: testUser.password });
+
+    // Extract the refresh token from the cookie header
+    const cookieHeader = loginRes.headers['set-cookie'][0];
+    const refreshToken = cookieHeader.split('refreshToken=')[1].split(';')[0];
+
+    const res = await request(app)
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${refreshToken}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/refresh tokens cannot be used/i);
   });
 
   it('should reject access with expired token on a protected route', async () => {
@@ -108,6 +139,7 @@ describe('Auth Endpoints (Layer 2)', () => {
 
   it('should accept valid token on protected route', async () => {
     await request(app).post('/auth/signup').send(testUser);
+    await prisma.user.update({ where: { email: testUser.email }, data: { email_verified: true } });
     const loginRes = await request(app).post('/auth/login').send({ email: testUser.email, password: testUser.password });
     const token = loginRes.body.accessToken;
 

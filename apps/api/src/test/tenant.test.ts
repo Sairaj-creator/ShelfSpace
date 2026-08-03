@@ -10,6 +10,7 @@ describe('Tenant Isolation Middleware (Layer 3)', () => {
     // Clean up all tables
     await prisma.orderItem.deleteMany();
     await prisma.order.deleteMany();
+    await prisma.auditLog.deleteMany();
     await prisma.product.deleteMany();
     await prisma.user.deleteMany();
     await prisma.organization.deleteMany();
@@ -146,5 +147,46 @@ describe('Tenant Isolation Middleware (Layer 3)', () => {
         data: { order_id: orderB.id, product_id: productB!.id, qty: 1, unit_price: 100 }
       })
     ).rejects.toThrow('Unauthorized cross-tenant access to Order');
+  });
+
+  it('scopedPrisma should isolate AuditLog records by org (cross-tenant regression)', async () => {
+    // Seed an audit log for each org directly via unscoped prisma
+    await prisma.auditLog.create({
+      data: {
+        organization: { connect: { id: orgAId } },
+        actor_id: 'test-actor',
+        action: 'STOCK_UPDATED',
+        details: JSON.stringify({ note: 'Org A event' }),
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        organization: { connect: { id: orgBId } },
+        actor_id: 'test-actor',
+        action: 'BULK_PRODUCTS_IMPORTED',
+        details: JSON.stringify({ note: 'Org B event' }),
+      },
+    });
+
+    const dbA = scopedPrisma(orgAId);
+    const dbB = scopedPrisma(orgBId);
+
+    const logsA = await dbA.auditLog.findMany();
+    const logsB = await dbB.auditLog.findMany();
+    const totalUnscoped = await prisma.auditLog.count();
+
+    // Scoped clients must each see exactly 1 log (their own)
+    expect(logsA.length).toBe(1);
+    expect(logsA[0].org_id).toBe(orgAId);
+
+    expect(logsB.length).toBe(1);
+    expect(logsB[0].org_id).toBe(orgBId);
+
+    // Unscoped count confirms both exist in the DB
+    expect(totalUnscoped).toBe(2);
+
+    // Counts must also be scoped — Org A's count() should return 1, not 2
+    const countA = await dbA.auditLog.count();
+    expect(countA).toBe(1);
   });
 });

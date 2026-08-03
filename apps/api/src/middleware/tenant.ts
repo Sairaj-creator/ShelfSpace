@@ -16,7 +16,11 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
   const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, getJwtSecret());
+    if ((payload as any).type === 'refresh') {
+      return res.status(401).json({ error: 'Refresh tokens cannot be used for API access' });
+    }
     (req as any).user = payload;
+
     
     // Inject scoped prisma based on JWT payload for tenant isolation
     if ((payload as any).orgId) {
