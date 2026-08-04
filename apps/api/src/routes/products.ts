@@ -154,6 +154,7 @@ productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
 productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> => {
   try {
     const orgId = (req as any).orgId;
+    const db = (req as any).db;
     const currentUser = (req as any).user;
     const { products } = req.body;
 
@@ -194,7 +195,7 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
     }
 
     // 3. Atomic batch insert & audit logging
-    const createdProducts = await prisma.$transaction(async (tx) => {
+    const createdProducts = await db.$transaction(async (tx) => {
       const inserted = [];
       for (const item of products) {
         const p = await tx.product.create({
@@ -249,7 +250,7 @@ productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => 
 
     const isStockEdited = stock_qty !== undefined && stock_qty !== existing.stock_qty;
 
-    const product = await prisma.$transaction(async (tx) => {
+    const product = await db.$transaction(async (tx) => {
       const updated = await tx.product.update({
         where: { id: req.params.id },
         data: {

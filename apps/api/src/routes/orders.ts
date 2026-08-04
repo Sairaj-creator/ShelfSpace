@@ -134,6 +134,7 @@ ordersRouter.get('/:id', async (req: Request, res: Response): Promise<any> => {
 ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
   try {
     const orgId = (req as any).orgId;
+    const db = (req as any).db;
     const { customer_name, items } = req.body;
     
     if (!customer_name || !items || !Array.isArray(items) || items.length === 0) {
@@ -141,7 +142,7 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
     }
 
     // We must do this in a transaction to prevent race conditions and partial failures
-    const order = await prisma.$transaction(async (tx) => {
+    const order = await db.$transaction(async (tx) => {
       let computedTotal = 0;
       const orderItemsData = [];
 
@@ -237,7 +238,7 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
     const orgId = (req as any).orgId;
 
     if (status === 'cancelled' && existing.status !== 'cancelled') {
-      const updated = await prisma.$transaction(async (tx) => {
+      const updated = await db.$transaction(async (tx) => {
         // Restock items
         for (const item of existing.items) {
           await tx.product.update({
@@ -264,7 +265,7 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
       return res.json({ order: updated });
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await db.$transaction(async (tx) => {
       const resOrder = await tx.order.update({
         where: { id: req.params.id },
         data: { status }
