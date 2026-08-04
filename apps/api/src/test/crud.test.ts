@@ -326,5 +326,80 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
       const stockAfter = afterRes.body.product.stock_qty;
       expect(stockAfter).toBe(stockBefore + 1);
     });
+    it('should allow different orgs to use the same idempotency key without collision', async () => {
+      const idempotencyKey = 'shared-idemp-key';
+      
+      // Org 1 creates order
+      const req1 = await request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .set('Idempotency-Key', idempotencyKey)
+        .send({ customer_name: 'Org1 Customer', items: [{ product_id: productId, qty: 1 }] });
+      
+      expect(req1.status).toBe(201);
+      const order1Id = req1.body.order.id;
+
+      // Create a second org and user
+      const pwHash = await bcrypt.hash('password123', 10);
+      const org2 = await prisma.organization.create({
+        data: { name: 'Org 2', plan: 'free', subscription_status: 'active' }
+      });
+      const owner2 = await prisma.user.create({
+        data: { org_id: org2.id, email: 'owner2@crud.com', password_hash: pwHash, role: Role.owner }
+      });
+      const owner2Token = jwt.sign({ userId: owner2.id, email: owner2.email, role: owner2.role, orgId: owner2.org_id }, JWT_SECRET, { expiresIn: '15m' });
+
+      const prod2 = await prisma.product.create({
+        data: { org_id: org2.id, name: 'Org 2 Product', sku: 'ORG2-PROD', price: 1000, stock_qty: 10 }
+      });
+
+      // Org 2 creates order with SAME idempotency key
+      const req2 = await request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${owner2Token}`)
+        .set('Idempotency-Key', idempotencyKey)
+        .send({ customer_name: 'Org2 Customer', items: [{ product_id: prod2.id, qty: 1 }] });
+      
+      expect(req2.status).toBe(201);
+      const order2Id = req2.body.order.id;
+
+      // Verify they are distinct orders
+      expect(order1Id).not.toBe(order2Id);
+      expect(req1.body.order.customer_name).toBe('Org1 Customer');
+      expect(req2.body.order.customer_name).toBe('Org2 Customer');
+    });
+
+    it('should prevent double-restocking on concurrent PATCH status cancel and DELETE order', async () => {
+      // Create an order
+      const createRes = await request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          customer_name: 'Cross-Route Race Customer',
+          items: [{ product_id: productId, qty: 1 }]
+        });
+      const orderId = createRes.body.order.id;
+
+      // Get stock before cancellation/deletion
+      const beforeRes = await request(app).get(`/products/${productId}`).set('Authorization', `Bearer ${ownerToken}`);
+      const stockBefore = beforeRes.body.product.stock_qty;
+
+      // Concurrent PATCH cancel and DELETE
+      const reqPatch = request(app).patch(`/orders/${orderId}/status`).set('Authorization', `Bearer ${ownerToken}`).send({ status: 'cancelled' });
+      const reqDelete = request(app).delete(`/orders/${orderId}`).set('Authorization', `Bearer ${ownerToken}`);
+      
+      const [resPatch, resDelete] = await Promise.all([reqPatch, reqDelete]);
+      
+      // Both might theoretically succeed (e.g. Patch sets status to cancelled, Delete sets deleted_at to true) 
+      // or one might fail depending on exact timing and lock resolution.
+      // The important thing is stock should be incremented EXACTLY once.
+
+      // Get stock after operations
+      const afterRes = await request(app).get(`/products/${productId}`).set('Authorization', `Bearer ${ownerToken}`);
+      const stockAfter = afterRes.body.product.stock_qty;
+
+      // Stock should increase exactly by 1 (the 1 item we ordered)
+      expect(stockAfter).toBe(stockBefore + 1);
+    });
   });
 });
