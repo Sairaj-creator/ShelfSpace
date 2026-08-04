@@ -125,6 +125,7 @@ productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
 
     const product = await db.$transaction(async (tx: any) => {
       if (org?.plan === 'free') {
+        await tx.$executeRaw`SELECT id FROM organizations WHERE id = ${orgId} FOR UPDATE`;
         const productCount = await tx.product.count();
         if (productCount >= 25) {
           throw new Error('FREE_PLAN_LIMIT');
@@ -193,6 +194,7 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
     // 3. Atomic batch insert & audit logging
     const createdProducts = await db.$transaction(async (tx: any) => {
       if (org?.plan === 'free') {
+        await tx.$executeRaw`SELECT id FROM organizations WHERE id = ${orgId} FOR UPDATE`;
         const currentCount = await tx.product.count();
         if (currentCount + products.length > 25) {
           const allowed = Math.max(0, 25 - currentCount);

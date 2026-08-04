@@ -91,6 +91,38 @@ describe('Layer 6 - Stripe Billing & Product Caps', () => {
       expect(res.status).toBe(201);
     });
 
+    it('should block concurrent requests from exceeding the 25 product cap (TOCTOU)', async () => {
+      // Reset to exactly 24 products
+      await prisma.product.deleteMany({ where: { org_id: orgId } });
+      const products = Array.from({ length: 24 }).map((_, i) => ({
+        org_id: orgId,
+        name: `Cap Product Concurrency ${i}`,
+        sku: `CAP-CONC-${i}`,
+        price: 1000
+      }));
+      await prisma.product.createMany({ data: products });
+
+      // Fire two concurrent requests
+      const req1 = request(app)
+        .post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Product 25A', sku: 'CAP-25A', price: 1000 });
+
+      const req2 = request(app)
+        .post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Product 25B', sku: 'CAP-25B', price: 1000 });
+
+      const [res1, res2] = await Promise.all([req1, req2]);
+      
+      const statuses = [res1.status, res2.status].sort();
+      // Exactly one should succeed (201) and exactly one should fail with 403
+      expect(statuses).toEqual([201, 403]);
+      
+      const count = await prisma.product.count({ where: { org_id: orgId } });
+      expect(count).toBe(25);
+    });
+
     it('should block creating 26th product on free plan', async () => {
       const res = await request(app)
         .post('/products')
