@@ -36,8 +36,21 @@ model Organization {
   products Product[]
   orders   Order[]
   audit_logs AuditLog[]
+  idempotency_records IdempotencyRecord[]
 
   @@map("organizations")
+}
+
+model IdempotencyRecord {
+  key        String   @id
+  org_id     String
+  response   Json
+  created_at DateTime @default(now())
+  expires_at DateTime
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  @@index([org_id])
+  @@map("idempotency_records")
 }
 
 model User {
@@ -64,12 +77,12 @@ model Product {
   stock_qty           Int      @default(0)
   low_stock_threshold Int      @default(5)
   created_at          DateTime @default(now())
+  deleted_at          DateTime?
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   order_items  OrderItem[]
 
   @@index([org_id])
-  @@unique([org_id, sku])
   @@map("products")
 }
 
@@ -80,6 +93,7 @@ model Order {
   status        OrderStatus @default(pending)
   total         Int // Store as cents
   created_at    DateTime    @default(now())
+  deleted_at    DateTime?
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   items        OrderItem[]

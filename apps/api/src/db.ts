@@ -2,12 +2,12 @@ import { PrismaClient, Prisma } from '@prisma/client';
 
 export const prisma = new PrismaClient();
 
-export const scopedPrisma = (orgId: string) => {
-  return prisma.$extends({
+export const scopedPrisma = (orgId: string, options: { includeDeleted?: boolean } = {}) => {
+  let client: any = prisma.$extends({
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
-          const tenantModels = ['User', 'Product', 'Order', 'AuditLog'];
+          const tenantModels = ['User', 'Product', 'Order', 'AuditLog', 'IdempotencyRecord'];
           const a = args as any;
           
           if (tenantModels.includes(model)) {
@@ -64,4 +64,26 @@ export const scopedPrisma = (orgId: string) => {
       },
     },
   });
+
+  if (!options.includeDeleted) {
+    client = client.$extends({
+      query: {
+        $allModels: {
+          async $allOperations({ model, operation, args, query }: any) {
+            const softDeleteModels = ['Product', 'Order'];
+            const readOperations = ['findUnique', 'findFirst', 'findMany', 'count', 'aggregate', 'groupBy'];
+            
+            if (softDeleteModels.includes(model) && readOperations.includes(operation)) {
+              const a = args as any;
+              a.where = { ...(a.where || {}), deleted_at: null };
+              return query(a);
+            }
+            return query(args);
+          }
+        }
+      }
+    });
+  }
+
+  return client;
 };

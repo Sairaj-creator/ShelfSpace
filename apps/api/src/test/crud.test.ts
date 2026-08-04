@@ -160,13 +160,29 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
       expect(prodRes.body.product.stock_qty).toBe(7); // 10 - 3
     });
 
-    it('should reject deleting a product with existing orders', async () => {
+    it('should soft-delete a product with existing orders', async () => {
       const res = await request(app)
         .delete(`/products/${productId}`)
         .set('Authorization', `Bearer ${ownerToken}`);
       
-      expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Cannot delete product');
+      expect(res.status).toBe(200);
+
+      // Verify it does not appear in GET /products
+      const listRes = await request(app)
+        .get('/products')
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(listRes.body.products.some((p: any) => p.id === productId)).toBe(false);
+    });
+
+    it('should allow recreating a SKU after it is soft-deleted', async () => {
+      const res = await request(app)
+        .post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Recreated Product', sku: 'TEST-1', price: 1500, stock_qty: 10 });
+      
+      expect(res.status).toBe(201);
+      expect(res.body.product.sku).toBe('TEST-1');
+      productId = res.body.product.id;
     });
 
     it('should allow owner to delete an unused product', async () => {
@@ -199,6 +215,7 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
           customer_name: 'Status Test Customer',
           items: [{ product_id: productId, qty: 1 }]
         });
+      if (createRes.status !== 201) console.error("TEST FAILED:", createRes.body);
       const orderId = createRes.body.order.id;
 
       // Transition status to fulfilled
@@ -217,6 +234,95 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
         .send({ status: 'invalid_status' });
 
       expect(invalidRes.status).toBe(400);
+    });
+
+    it('should prevent double-restocking on concurrent order cancellations', async () => {
+      // Create an order
+      const createRes = await request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          customer_name: 'Race Customer',
+          items: [{ product_id: productId, qty: 1 }]
+        });
+      const orderId = createRes.body.order.id;
+
+      // Get stock before cancellation
+      const beforeRes = await request(app).get(`/products/${productId}`).set('Authorization', `Bearer ${ownerToken}`);
+      const stockBefore = beforeRes.body.product.stock_qty;
+
+      // Concurrent cancellations
+      const req1 = request(app).patch(`/orders/${orderId}/status`).set('Authorization', `Bearer ${ownerToken}`).send({ status: 'cancelled' });
+      const req2 = request(app).patch(`/orders/${orderId}/status`).set('Authorization', `Bearer ${ownerToken}`).send({ status: 'cancelled' });
+      
+      const [res1, res2] = await Promise.all([req1, req2]);
+      
+      const statuses = [res1.status, res2.status].sort();
+      expect(statuses).toEqual([200, 400]); // One should succeed, one should fail
+
+      // Get stock after cancellation
+      const afterRes = await request(app).get(`/products/${productId}`).set('Authorization', `Bearer ${ownerToken}`);
+      const stockAfter = afterRes.body.product.stock_qty;
+
+      // Stock should increase exactly by 1
+      expect(stockAfter).toBe(stockBefore + 1);
+    });
+
+    it('should enforce idempotency for order creation (concurrent)', async () => {
+      const idempotencyKey = 'idemp-test-key-1';
+      
+      const req1 = request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .set('Idempotency-Key', idempotencyKey)
+        .send({ customer_name: 'Idempotency Customer', items: [{ product_id: productId, qty: 1 }] });
+        
+      const req2 = request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .set('Idempotency-Key', idempotencyKey)
+        .send({ customer_name: 'Idempotency Customer', items: [{ product_id: productId, qty: 1 }] });
+
+      const [res1, res2] = await Promise.all([req1, req2]);
+      
+      // Both should return 201 (one created, one idempotent replay or 409 conflict if blocked by timeout)
+      // Since it's concurrent, one will lock and the other will block. If the lock releases quickly, it returns 201 replay.
+      expect([201, 409]).toContain(res1.status);
+      expect([201, 409]).toContain(res2.status);
+      
+      if (res1.status === 201 && res2.status === 201) {
+        // Both got success, they should have the exact same order ID
+        expect(res1.body.order.id).toBe(res2.body.order.id);
+      }
+    });
+
+    it('should soft-delete an order and atomic restock', async () => {
+      // Create an order
+      const createRes = await request(app)
+        .post('/orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          customer_name: 'Delete Customer',
+          items: [{ product_id: productId, qty: 1 }]
+        });
+      const orderId = createRes.body.order.id;
+
+      // Get stock before delete
+      const beforeRes = await request(app).get(`/products/${productId}`).set('Authorization', `Bearer ${ownerToken}`);
+      const stockBefore = beforeRes.body.product.stock_qty;
+
+      // Soft delete
+      const delRes = await request(app).delete(`/orders/${orderId}`).set('Authorization', `Bearer ${ownerToken}`);
+      expect(delRes.status).toBe(200);
+
+      // Verify it's gone from GET /orders
+      const listRes = await request(app).get('/orders').set('Authorization', `Bearer ${ownerToken}`);
+      expect(listRes.body.orders.some((o: any) => o.id === orderId)).toBe(false);
+
+      // Get stock after delete
+      const afterRes = await request(app).get(`/products/${productId}`).set('Authorization', `Bearer ${ownerToken}`);
+      const stockAfter = afterRes.body.product.stock_qty;
+      expect(stockAfter).toBe(stockBefore + 1);
     });
   });
 });

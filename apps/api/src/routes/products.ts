@@ -191,8 +191,21 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
 
     const org = await prisma.organization.findUnique({ where: { id: orgId } });
 
+    const idempotencyKey = req.header('Idempotency-Key');
+
     // 3. Atomic batch insert & audit logging
     const createdProducts = await db.$transaction(async (tx: any) => {
+      if (idempotencyKey) {
+        await tx.idempotencyRecord.create({
+          data: {
+            key: idempotencyKey,
+            org_id: orgId,
+            response: {},
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
+          }
+        });
+      }
+
       if (org?.plan === 'free') {
         await tx.$executeRaw`SELECT id FROM organizations WHERE id = ${orgId} FOR UPDATE`;
         const currentCount = await tx.product.count();
@@ -224,20 +237,37 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
         details: { count: inserted.length },
       });
 
+      if (idempotencyKey) {
+        await tx.idempotencyRecord.update({
+          where: { key: idempotencyKey },
+          data: { response: { created_count: inserted.length, products: inserted } }
+        });
+      }
+
       return inserted;
     });
 
     return res.status(201).json({ created_count: createdProducts.length, products: createdProducts });
   } catch (error: any) {
+    const idempotencyKey = req.header('Idempotency-Key');
+    if (error.code === 'P2002') {
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target || '');
+      if (idempotencyKey && (target.includes('key') || target.includes('PRIMARY'))) {
+        const db = (req as any).db;
+        const record = await db.idempotencyRecord.findUnique({ where: { key: idempotencyKey } });
+        return res.status(201).json(record.response);
+      }
+      return res.status(400).json({ error: 'One or more SKUs already exist in your product catalog' });
+    }
+    if ((error.code === 'P2024' || error.code === 'P2010') && idempotencyKey) {
+      return res.status(409).json({ error: 'Request currently processing' });
+    }
     console.error(error);
     if (error.message?.startsWith('FREE_PLAN_BULK_LIMIT')) {
       const [_, allowed, current, length] = error.message.split('|');
       return res.status(400).json({
         error: `Bulk import of ${length} products exceeds free plan limit of 25 products (currently at ${current}). You can only add ${allowed} more product(s). Upgrade to Pro for unlimited products.`
       });
-    }
-    if (error.code === 'P2002') {
-      return res.status(400).json({ error: 'One or more SKUs already exist in your product catalog' });
     }
     return res.status(500).json({ error: error.message || 'Internal server error during bulk import' });
   }
@@ -301,19 +331,19 @@ productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => 
 productsRouter.delete('/:id', requireRole(Role.owner), async (req: Request, res: Response): Promise<any> => {
   try {
     const db = (req as any).db;
-    const existing = await db.product.findUnique({ where: { id: req.params.id } });
-    if (!existing) return res.status(404).json({ error: 'Product not found' });
-
-    await db.product.delete({
-      where: { id: req.params.id }
+    
+    const updateCount = await db.product.updateMany({
+      where: { id: req.params.id, deleted_at: null },
+      data: { deleted_at: new Date() }
     });
+
+    if (updateCount.count === 0) {
+      return res.status(404).json({ error: 'Product not found or already deleted' });
+    }
 
     return res.json({ success: true });
   } catch (error: any) {
     console.error(error);
-    if (error.code === 'P2003') {
-      return res.status(400).json({ error: 'Cannot delete product because it has existing orders' });
-    }
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

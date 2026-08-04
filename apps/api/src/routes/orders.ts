@@ -141,9 +141,21 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ error: 'Missing customer_name or items array' });
     }
 
+    const idempotencyKey = req.header('Idempotency-Key');
+
     // We must do this in a transaction to prevent race conditions and partial failures
     const order = await db.$transaction(async (tx: any) => {
-      let computedTotal = 0;
+        if (idempotencyKey) {
+          await tx.idempotencyRecord.create({
+            data: {
+              key: idempotencyKey,
+              org_id: orgId,
+              response: {},
+              expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
+            }
+          });
+        }
+        let computedTotal = 0;
       const orderItemsData = [];
 
       for (const item of items) {
@@ -201,11 +213,27 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
         include: { items: true }
       });
 
+      if (idempotencyKey) {
+        await tx.idempotencyRecord.update({
+          where: { key: idempotencyKey },
+          data: { response: newOrder }
+        });
+      }
+
       return newOrder;
     });
 
     return res.status(201).json({ order });
   } catch (error: any) {
+    const idempotencyKey = req.header('Idempotency-Key');
+    if (error.code === 'P2002' && idempotencyKey) {
+      const db = (req as any).db;
+      const record = await db.idempotencyRecord.findUnique({ where: { key: idempotencyKey } });
+      return res.status(201).json({ order: record.response });
+    }
+    if ((error.code === 'P2024' || error.code === 'P2010') && idempotencyKey) {
+      return res.status(409).json({ error: 'Request currently processing' });
+    }
     console.error(error);
     return res.status(400).json({ error: error.message || 'Error creating order' });
   }
@@ -238,31 +266,42 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
     const orgId = (req as any).orgId;
 
     if (status === 'cancelled' && existing.status !== 'cancelled') {
-      const updated = await db.$transaction(async (tx: any) => {
-        // Restock items
-        for (const item of existing.items) {
-          await tx.product.update({
-            where: { id: item.product_id },
-            data: { stock_qty: { increment: item.qty } }
+      try {
+        const updated = await db.$transaction(async (tx: any) => {
+          // Atomic transition guard
+          const updateCount = await tx.order.updateMany({
+            where: { id: req.params.id, status: { not: 'cancelled' } },
+            data: { status }
           });
-        }
+          
+          if (updateCount.count === 0) {
+            throw new Error('Order already cancelled or deleted');
+          }
 
-        const resOrder = await tx.order.update({
-          where: { id: req.params.id },
-          data: { status }
+          // Restock items
+          for (const item of existing.items) {
+            await tx.product.update({
+              where: { id: item.product_id },
+              data: { stock_qty: { increment: item.qty } }
+            });
+          }
+
+          const resOrder = await tx.order.findUnique({ where: { id: req.params.id }, include: { items: true } });
+
+          await createAuditEntry(tx, {
+            orgId,
+            actorId: currentUser.userId,
+            action: 'ORDER_CANCELLED',
+            targetId: req.params.id,
+            details: { restocked_items_count: existing.items.length }
+          });
+
+          return resOrder;
         });
-
-        await createAuditEntry(tx, {
-          orgId,
-          actorId: currentUser.userId,
-          action: 'ORDER_CANCELLED',
-          targetId: req.params.id,
-          details: { restocked_items_count: existing.items.length }
-        });
-
-        return resOrder;
-      });
-      return res.json({ order: updated });
+        return res.json({ order: updated });
+      } catch (e: any) {
+        return res.status(400).json({ error: e.message });
+      }
     }
 
     const updated = await db.$transaction(async (tx: any) => {
@@ -279,3 +318,54 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// DELETE /orders/:id
+ordersRouter.delete('/:id', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const db = (req as any).db;
+    const currentUser = (req as any).user;
+    const orgId = (req as any).orgId;
+
+    const existing = await db.order.findUnique({ 
+      where: { id: req.params.id },
+      include: { items: true }
+    });
+    if (!existing) return res.status(404).json({ error: 'Order not found' });
+
+    await db.$transaction(async (tx: any) => {
+      // Atomic guard: ensure we are the one deleting it
+      const updateCount = await tx.order.updateMany({
+        where: { id: req.params.id, deleted_at: null },
+        data: { deleted_at: new Date() }
+      });
+      
+      if (updateCount.count === 0) {
+        throw new Error('Order already deleted');
+      }
+
+      // Restock items only if it wasn't ALREADY cancelled
+      if (existing.status !== 'cancelled') {
+        for (const item of existing.items) {
+          await tx.product.update({
+            where: { id: item.product_id },
+            data: { stock_qty: { increment: item.qty } }
+          });
+        }
+      }
+
+      await createAuditEntry(tx, {
+        orgId,
+        actorId: currentUser.userId,
+        action: 'ORDER_DELETED',
+        targetId: req.params.id,
+        details: { restocked_items_count: existing.status !== 'cancelled' ? existing.items.length : 0 }
+      });
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(400).json({ error: error.message || 'Error deleting order' });
+  }
+});
+
