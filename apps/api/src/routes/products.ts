@@ -195,7 +195,7 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
     }
 
     // 3. Atomic batch insert & audit logging
-    const createdProducts = await db.$transaction(async (tx) => {
+    const createdProducts = await db.$transaction(async (tx: any) => {
       const inserted = [];
       for (const item of products) {
         const p = await tx.product.create({
@@ -250,7 +250,7 @@ productsRouter.put('/:id', async (req: Request, res: Response): Promise<any> => 
 
     const isStockEdited = stock_qty !== undefined && stock_qty !== existing.stock_qty;
 
-    const product = await db.$transaction(async (tx) => {
+    const product = await db.$transaction(async (tx: any) => {
       const updated = await tx.product.update({
         where: { id: req.params.id },
         data: {

@@ -142,7 +142,7 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
     }
 
     // We must do this in a transaction to prevent race conditions and partial failures
-    const order = await db.$transaction(async (tx) => {
+    const order = await db.$transaction(async (tx: any) => {
       let computedTotal = 0;
       const orderItemsData = [];
 
@@ -238,7 +238,7 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
     const orgId = (req as any).orgId;
 
     if (status === 'cancelled' && existing.status !== 'cancelled') {
-      const updated = await db.$transaction(async (tx) => {
+      const updated = await db.$transaction(async (tx: any) => {
         // Restock items
         for (const item of existing.items) {
           await tx.product.update({
@@ -265,7 +265,7 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
       return res.json({ order: updated });
     }
 
-    const updated = await db.$transaction(async (tx) => {
+    const updated = await db.$transaction(async (tx: any) => {
       const resOrder = await tx.order.update({
         where: { id: req.params.id },
         data: { status }

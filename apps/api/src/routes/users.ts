@@ -48,7 +48,7 @@ usersRouter.post('/invite', requireRole(Role.owner), async (req: Request, res: R
 
     const currentUser = (req as any).user;
 
-    await db.$transaction(async (tx) => {
+    await db.$transaction(async (tx: any) => {
       await createAuditEntry(tx, {
         orgId,
         actorId: currentUser.userId,
@@ -85,7 +85,7 @@ usersRouter.delete('/:id', requireRole(Role.owner), async (req: Request, res: Re
 
     const orgId = (req as any).orgId;
 
-    await db.$transaction(async (tx) => {
+    await db.$transaction(async (tx: any) => {
       await tx.user.delete({ where: { id: userId } });
       await createAuditEntry(tx, {
         orgId,
