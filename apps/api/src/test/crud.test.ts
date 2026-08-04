@@ -287,6 +287,8 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
       
       // Both should return 201 (one created, one idempotent replay or 409 conflict if blocked by timeout)
       // Since it's concurrent, one will lock and the other will block. If the lock releases quickly, it returns 201 replay.
+      if (![201, 409].includes(res1.status)) console.error("IDEMP TEST FAIL 1:", res1.body);
+      if (![201, 409].includes(res2.status)) console.error("IDEMP TEST FAIL 2:", res2.body);
       expect([201, 409]).toContain(res1.status);
       expect([201, 409]).toContain(res2.status);
       

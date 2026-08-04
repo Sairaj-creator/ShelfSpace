@@ -239,7 +239,7 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
 
       if (idempotencyKey) {
         await tx.idempotencyRecord.update({
-          where: { key: idempotencyKey },
+          where: { org_id_key: { org_id: orgId, key: idempotencyKey } },
           data: { response: { created_count: inserted.length, products: inserted } }
         });
       }
@@ -254,7 +254,7 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
       const target = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target || '');
       if (idempotencyKey && (target.includes('key') || target.includes('PRIMARY'))) {
         const db = (req as any).db;
-        const record = await db.idempotencyRecord.findUnique({ where: { key: idempotencyKey } });
+        const record = await db.idempotencyRecord.findUnique({ where: { org_id_key: { org_id: orgId, key: idempotencyKey } } });
         return res.status(201).json(record.response);
       }
       return res.status(400).json({ error: 'One or more SKUs already exist in your product catalog' });

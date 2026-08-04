@@ -215,7 +215,7 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
 
       if (idempotencyKey) {
         await tx.idempotencyRecord.update({
-          where: { key: idempotencyKey },
+          where: { org_id_key: { org_id: orgId, key: idempotencyKey } },
           data: { response: newOrder }
         });
       }
@@ -226,10 +226,14 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
     return res.status(201).json({ order });
   } catch (error: any) {
     const idempotencyKey = req.header('Idempotency-Key');
-    if (error.code === 'P2002' && idempotencyKey) {
-      const db = (req as any).db;
-      const record = await db.idempotencyRecord.findUnique({ where: { key: idempotencyKey } });
-      return res.status(201).json({ order: record.response });
+    const orgId = (req as any).orgId;
+    if (error.code === 'P2002') {
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target || '');
+      if (idempotencyKey && (target.includes('key') || target.includes('PRIMARY'))) {
+        const db = (req as any).db;
+        const record = await db.idempotencyRecord.findUnique({ where: { org_id_key: { org_id: orgId, key: idempotencyKey } } });
+        return res.status(201).json({ order: record.response });
+      }
     }
     if ((error.code === 'P2024' || error.code === 'P2010') && idempotencyKey) {
       return res.status(409).json({ error: 'Request currently processing' });
@@ -268,15 +272,19 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
     if (status === 'cancelled' && existing.status !== 'cancelled') {
       try {
         const updated = await db.$transaction(async (tx: any) => {
-          // Atomic transition guard
-          const updateCount = await tx.order.updateMany({
-            where: { id: req.params.id, status: { not: 'cancelled' } },
+          // Serialize access to prevent race conditions with DELETE
+          const rows = await tx.$queryRaw`SELECT status, deleted_at FROM orders WHERE id = ${req.params.id} AND org_id = ${orgId} FOR UPDATE`;
+          if (rows.length === 0 || rows[0].deleted_at !== null) {
+            throw new Error('Order not found or already deleted');
+          }
+          if (rows[0].status === 'cancelled') {
+            throw new Error('Order already cancelled');
+          }
+
+          await tx.order.update({
+            where: { id: req.params.id },
             data: { status }
           });
-          
-          if (updateCount.count === 0) {
-            throw new Error('Order already cancelled or deleted');
-          }
 
           // Restock items
           for (const item of existing.items) {
@@ -333,18 +341,20 @@ ordersRouter.delete('/:id', async (req: Request, res: Response): Promise<any> =>
     if (!existing) return res.status(404).json({ error: 'Order not found' });
 
     await db.$transaction(async (tx: any) => {
-      // Atomic guard: ensure we are the one deleting it
-      const updateCount = await tx.order.updateMany({
-        where: { id: req.params.id, deleted_at: null },
-        data: { deleted_at: new Date() }
-      });
-      
-      if (updateCount.count === 0) {
-        throw new Error('Order already deleted');
+      // Serialize access to prevent race conditions with PATCH /status
+      const rows = await tx.$queryRaw`SELECT status, deleted_at FROM orders WHERE id = ${req.params.id} AND org_id = ${orgId} FOR UPDATE`;
+      if (rows.length === 0 || rows[0].deleted_at !== null) {
+        throw new Error('Order already deleted or not found');
       }
 
+      await tx.order.update({
+        where: { id: req.params.id },
+        data: { deleted_at: new Date() }
+      });
+
       // Restock items only if it wasn't ALREADY cancelled
-      if (existing.status !== 'cancelled') {
+      const currentStatus = rows[0].status;
+      if (currentStatus !== 'cancelled') {
         for (const item of existing.items) {
           await tx.product.update({
             where: { id: item.product_id },
@@ -358,7 +368,7 @@ ordersRouter.delete('/:id', async (req: Request, res: Response): Promise<any> =>
         actorId: currentUser.userId,
         action: 'ORDER_DELETED',
         targetId: req.params.id,
-        details: { restocked_items_count: existing.status !== 'cancelled' ? existing.items.length : 0 }
+        details: { restocked_items_count: currentStatus !== 'cancelled' ? existing.items.length : 0 }
       });
     });
 

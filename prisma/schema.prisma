@@ -42,13 +42,14 @@ model Organization {
 }
 
 model IdempotencyRecord {
-  key        String   @id
+  key        String
   org_id     String
   response   Json
   created_at DateTime @default(now())
   expires_at DateTime
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  @@id([org_id, key])
   @@index([org_id])
   @@map("idempotency_records")
 }
