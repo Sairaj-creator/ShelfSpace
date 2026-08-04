@@ -38,6 +38,11 @@ usersRouter.post('/invite', requireRole(Role.owner), async (req: Request, res: R
 
     const orgId = (req as any).orgId;
     const db = (req as any).db;
+
+    const existingMember = await db.user.findFirst({ where: { email } });
+    if (existingMember) {
+      return res.status(400).json({ error: 'User is already a member of this organization' });
+    }
     
     // Create an invite token
     const token = jwt.sign(

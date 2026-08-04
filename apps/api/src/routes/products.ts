@@ -123,26 +123,31 @@ productsRouter.post('/', async (req: Request, res: Response): Promise<any> => {
     const orgId = (req as any).orgId;
     const org = await prisma.organization.findUnique({ where: { id: orgId } });
 
-    if (org?.plan === 'free') {
-      const productCount = await db.product.count();
-      if (productCount >= 25) {
-        return res.status(403).json({ error: 'Free plan limit reached. Please upgrade to Pro.' });
+    const product = await db.$transaction(async (tx: any) => {
+      if (org?.plan === 'free') {
+        const productCount = await tx.product.count();
+        if (productCount >= 25) {
+          throw new Error('FREE_PLAN_LIMIT');
+        }
       }
-    }
 
-    const product = await db.product.create({
-      data: {
-        name,
-        sku: String(sku).trim().toUpperCase(),
-        price,
-        stock_qty: stock_qty || 0,
-        low_stock_threshold: low_stock_threshold !== undefined ? low_stock_threshold : 5,
-      }
+      return await tx.product.create({
+        data: {
+          name,
+          sku: String(sku).trim().toUpperCase(),
+          price,
+          stock_qty: stock_qty || 0,
+          low_stock_threshold: low_stock_threshold !== undefined ? low_stock_threshold : 5,
+        }
+      });
     });
 
     return res.status(201).json({ product });
   } catch (error: any) {
     console.error(error);
+    if (error.message === 'FREE_PLAN_LIMIT') {
+      return res.status(403).json({ error: 'Free plan limit reached. Please upgrade to Pro.' });
+    }
     if (error.code === 'P2002') {
       return res.status(400).json({ error: 'A product with this SKU already exists' });
     }
@@ -183,19 +188,18 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
       skuMap.set(normalizedSku, i);
     }
 
-    // 2. Free plan cap pre-validation
     const org = await prisma.organization.findUnique({ where: { id: orgId } });
-    const currentCount = await prisma.product.count({ where: { org_id: orgId } });
-
-    if (org?.plan === 'free' && currentCount + products.length > 25) {
-      const allowed = Math.max(0, 25 - currentCount);
-      return res.status(400).json({
-        error: `Bulk import of ${products.length} products exceeds free plan limit of 25 products (currently at ${currentCount}). You can only add ${allowed} more product(s). Upgrade to Pro for unlimited products.`,
-      });
-    }
 
     // 3. Atomic batch insert & audit logging
     const createdProducts = await db.$transaction(async (tx: any) => {
+      if (org?.plan === 'free') {
+        const currentCount = await tx.product.count();
+        if (currentCount + products.length > 25) {
+          const allowed = Math.max(0, 25 - currentCount);
+          throw new Error(`FREE_PLAN_BULK_LIMIT|${allowed}|${currentCount}|${products.length}`);
+        }
+      }
+
       const inserted = [];
       for (const item of products) {
         const p = await tx.product.create({
@@ -224,6 +228,12 @@ productsRouter.post('/bulk', async (req: Request, res: Response): Promise<any> =
     return res.status(201).json({ created_count: createdProducts.length, products: createdProducts });
   } catch (error: any) {
     console.error(error);
+    if (error.message?.startsWith('FREE_PLAN_BULK_LIMIT')) {
+      const [_, allowed, current, length] = error.message.split('|');
+      return res.status(400).json({
+        error: `Bulk import of ${length} products exceeds free plan limit of 25 products (currently at ${current}). You can only add ${allowed} more product(s). Upgrade to Pro for unlimited products.`
+      });
+    }
     if (error.code === 'P2002') {
       return res.status(400).json({ error: 'One or more SKUs already exist in your product catalog' });
     }

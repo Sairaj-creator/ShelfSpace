@@ -28,7 +28,7 @@
 - 📊 **Real-time Analytics**: Server-side SQL aggregations (`Prisma.aggregate`) for revenue tracking and dynamic low-stock alerts.
 - 💳 **Stripe Billing Integration**: Automated checkout sessions, tier enforcement (free tier cap at 25 products), and Stripe Webhook signature verification.
 - ⚡ **Rate Limiting**: Brute-force protection on authentication routes powered by `express-rate-limit`.
-- 🧪 **Full Test Coverage**: 100% green test suite — 50 Vitest backend integration tests and Playwright E2E browser automation.
+- 🧪 **Full Test Coverage**: 100% green test suite — 69 Vitest backend integration tests and Playwright E2E browser automation.
 
 ---
 
@@ -126,7 +126,7 @@ STRIPE_WEBHOOK_SECRET=whsec_mock
 
 ```bash
 # Push schema migrations
-npx prisma db push
+npx prisma migrate dev
 
 # Seed multi-tenant data
 npx prisma db seed
