@@ -47,8 +47,8 @@ describe('Phase 5 Features & Security', () => {
     });
 
     orgId = org.id;
-    const owner = org.users.find(u => u.role === Role.owner)!;
-    const staff = org.users.find(u => u.role === Role.staff)!;
+    const owner = org.users.find((u: any) => u.role === Role.owner)!;
+    const staff = org.users.find((u: any) => u.role === Role.staff)!;
     ownerUserId = owner.id;
 
     ownerToken = jwt.sign({ userId: owner.id, orgId: org.id, role: Role.owner }, getJwtSecret());
