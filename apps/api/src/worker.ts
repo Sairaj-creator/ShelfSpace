@@ -99,7 +99,7 @@ export async function processJobInline(name: string, data: any) {
         }
       });
       if (product) {
-        const lowStockLevels = product.inventory_levels.filter(il => il.stock_qty <= il.low_stock_threshold);
+        const lowStockLevels = product.inventory_levels.filter((il: any) => il.stock_qty <= il.low_stock_threshold);
         if (lowStockLevels.length > 0) {
           for (const user of product.organization.users) {
             console.log(`[Worker] Low stock alert for ${product.name} (SKU: ${product.sku}) sent to ${user.email}`);

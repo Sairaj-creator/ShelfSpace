@@ -96,7 +96,7 @@ productsRouter.get('/export', async (req: Request, res: Response): Promise<any> 
 
     let cursor = undefined;
     while (true) {
-      const chunk = await db.product.findMany({
+      const chunk: any[] = await db.product.findMany({
         take: 1000,
         skip: cursor ? 1 : 0,
         ...(cursor ? { cursor: { id: cursor } } : {}),

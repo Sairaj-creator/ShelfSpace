@@ -1,8 +1,10 @@
-import { app } from './app';
 import dotenv from 'dotenv';
-import './worker';
+import path from 'path';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '..', '.env') });
+
+import { app } from './app';
+import './worker';
 
 const port = process.env.PORT || 3000;
 

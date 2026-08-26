@@ -46,7 +46,7 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
   }));
 
   const lowStockProducts = allProducts
-    .filter((p: any) => p.stock_qty < p.low_stock_threshold)
+    .filter((p: any) => p.stock_qty <= p.low_stock_threshold)
     .sort((a: any, b: any) => a.stock_qty - b.stock_qty);
 
   // 3. Aggregate Revenue for current month
@@ -78,6 +78,7 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
     WHERE org_id = ${orgId}
       AND created_at >= ${thirtyDaysAgo}
       AND status IN ('pending', 'fulfilled')
+      AND deleted_at IS NULL
     GROUP BY date
     ORDER BY date ASC
   `;

@@ -6,7 +6,7 @@ export const scopedPrisma = (orgId: string, options: { includeDeleted?: boolean 
   let client: any = prisma.$extends({
     query: {
       $allModels: {
-        async $allOperations({ model, operation, args, query }) {
+        async $allOperations({ model, operation, args, query }: any) {
           const tenantModels = ['User', 'Product', 'Order', 'AuditLog', 'IdempotencyRecord'];
           const a = args as any;
           

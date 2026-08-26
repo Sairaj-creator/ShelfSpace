@@ -57,7 +57,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     credentials: options.credentials || 'include',
   });
 
-  if (response.status === 401) {
+  if (response.status === 401 && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/signup')) {
     // Prevent multiple parallel refresh calls
     if (!refreshPromise) {
       refreshPromise = refreshToken().finally(() => {

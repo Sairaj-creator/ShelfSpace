@@ -34,6 +34,8 @@ eventsRouter.get('/', async (req: Request, res: Response) => {
 
   const channel = `org_events:${orgId}`;
 
+  const subscriber = redisSubscriber ? redisSubscriber.duplicate() : null;
+
   // We need a dedicated listener function so we can remove it when this specific client disconnects
   const messageHandler = (ch: string, message: string) => {
     if (ch === channel) {
@@ -41,8 +43,10 @@ eventsRouter.get('/', async (req: Request, res: Response) => {
     }
   };
 
-  await redisSubscriber.subscribe(channel);
-  redisSubscriber.on('message', messageHandler);
+  if (subscriber) {
+    await subscriber.subscribe(channel);
+    subscriber.on('message', messageHandler);
+  }
 
   // Keep the connection alive
   const heartbeatInterval = setInterval(() => {
@@ -52,7 +56,10 @@ eventsRouter.get('/', async (req: Request, res: Response) => {
   // Clean up when client disconnects
   req.on('close', () => {
     clearInterval(heartbeatInterval);
-    redisSubscriber.off('message', messageHandler);
-    redisSubscriber.unsubscribe(channel).catch(err => console.error('[SSE] Unsubscribe error:', err));
+    if (subscriber) {
+      subscriber.off('message', messageHandler);
+      subscriber.unsubscribe(channel).catch(err => console.error('[SSE] Unsubscribe error:', err));
+      subscriber.quit().catch(err => console.error('[SSE] Quit error:', err));
+    }
   });
 });
