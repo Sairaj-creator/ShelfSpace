@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/tenant';
+import { enqueueJob } from '../lib/queue';
+import { redisConnection } from '../lib/redis';
 import { PrismaClient } from '@prisma/client';
 
 export const ordersRouter = Router();
@@ -157,13 +159,14 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
         }
         let computedTotal = 0;
       const orderItemsData = [];
+      const lowStockAlerts: string[] = [];
 
       for (const item of items) {
         if (item.qty <= 0) {
           throw new Error('Quantity must be greater than zero');
         }
 
-        // Fetch product scoped to this org to prevent cross-tenant ordering
+        // Fetch product scoped to this org
         const product = await tx.product.findFirst({
           where: { id: item.product_id, org_id: orgId }
         });
@@ -172,19 +175,28 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
           throw new Error(`Product not found or unauthorized (ID: ${item.product_id})`);
         }
 
-        if (product.stock_qty < item.qty) {
-          throw new Error(`Insufficient stock for product ${product.name}`);
+        // Find a location with sufficient stock
+        const inventory = await tx.inventoryLevel.findFirst({
+          where: { product_id: product.id, stock_qty: { gte: item.qty } },
+          orderBy: { stock_qty: 'desc' } // Auto-allocate from location with most stock
+        });
+
+        if (!inventory) {
+          throw new Error(`Insufficient stock at any single location for product ${product.name}`);
         }
 
-        // Decrement stock atomically, catching race conditions
         try {
-          await tx.product.update({
-            where: { id: product.id, stock_qty: { gte: item.qty } },
+          const updatedInventory = await tx.inventoryLevel.update({
+            where: { id: inventory.id, stock_qty: { gte: item.qty } },
             data: { stock_qty: { decrement: item.qty } }
           });
+          
+          if (updatedInventory.stock_qty <= updatedInventory.low_stock_threshold) {
+            lowStockAlerts.push(product.id);
+          }
         } catch (e: any) {
           if (e.code === 'P2025') {
-            throw new Error(`Insufficient stock for product ${product.name} due to concurrent update`);
+            throw new Error(`Insufficient stock at any single location for product ${product.name} due to concurrent update`);
           }
           throw e;
         }
@@ -194,6 +206,7 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
 
         orderItemsData.push({
           product_id: product.id,
+          location_id: inventory.location_id,
           qty: item.qty,
           unit_price: product.price
         });
@@ -220,10 +233,15 @@ ordersRouter.post('/', async (req: Request, res: Response): Promise<any> => {
         });
       }
 
-      return newOrder;
+      return { order: newOrder, lowStockAlerts };
     });
 
-    return res.status(201).json({ order });
+    // Enqueue alerts outside the transaction so they don't fire on rollback
+    for (const productId of order.lowStockAlerts) {
+      await enqueueJob('lowStockAlert', { productId });
+    }
+
+    return res.status(201).json({ order: order.order });
   } catch (error: any) {
     const idempotencyKey = req.header('Idempotency-Key');
     const orgId = (req as any).orgId;
@@ -288,8 +306,8 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
 
           // Restock items
           for (const item of existing.items) {
-            await tx.product.update({
-              where: { id: item.product_id },
+            await tx.inventoryLevel.update({
+              where: { product_id_location_id: { product_id: item.product_id, location_id: item.location_id } },
               data: { stock_qty: { increment: item.qty } }
             });
           }
@@ -306,6 +324,14 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
 
           return resOrder;
         });
+
+        if (redisConnection) {
+          redisConnection.publish(
+            `org_events:${orgId}`,
+            JSON.stringify({ type: 'order_status', orderId: updated.id, status: updated.status })
+          ).catch(err => console.error('[Orders] Redis publish error:', err));
+        }
+
         return res.json({ order: updated });
       } catch (e: any) {
         return res.status(400).json({ error: e.message });
@@ -319,6 +345,13 @@ ordersRouter.patch('/:id/status', async (req: Request, res: Response): Promise<a
       });
       return resOrder;
     });
+
+    if (redisConnection) {
+      redisConnection.publish(
+        `org_events:${orgId}`,
+        JSON.stringify({ type: 'order_status', orderId: updated.id, status: updated.status })
+      ).catch(err => console.error('[Orders] Redis publish error:', err));
+    }
 
     return res.json({ order: updated });
   } catch (error: any) {
@@ -356,8 +389,8 @@ ordersRouter.delete('/:id', async (req: Request, res: Response): Promise<any> =>
       const currentStatus = rows[0].status;
       if (currentStatus !== 'cancelled') {
         for (const item of existing.items) {
-          await tx.product.update({
-            where: { id: item.product_id },
+          await tx.inventoryLevel.update({
+            where: { product_id_location_id: { product_id: item.product_id, location_id: item.location_id } },
             data: { stock_qty: { increment: item.qty } }
           });
         }

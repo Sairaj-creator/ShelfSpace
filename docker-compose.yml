@@ -12,6 +12,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   api:
     build:
       context: ./apps/api
@@ -23,6 +28,7 @@ services:
       - STRIPE_SECRET_KEY
       - STRIPE_WEBHOOK_SECRET
       - STRIPE_PRO_PRICE_ID
+      - REDIS_URL=redis://redis:6379
     ports:
       - "3000:3000"
     volumes:
@@ -30,6 +36,7 @@ services:
     working_dir: /app/apps/api
     depends_on:
       - postgres
+      - redis
     command: npm run dev
 
 volumes:

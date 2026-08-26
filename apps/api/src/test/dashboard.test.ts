@@ -28,13 +28,20 @@ describe('Dashboard Metrics', () => {
             password_hash: passwordHash,
             role: Role.owner,
           }
+        },
+        locations: {
+          create: {
+            name: 'Main Warehouse'
+          }
         }
       },
-      include: { users: true }
+      include: { users: true, locations: true }
     });
 
     orgId = org.id;
     ownerId = org.users[0].id;
+    const locationId = org.locations[0].id;
+    (global as any).testLocationId = locationId;
     token = jwt.sign({ userId: ownerId, orgId, role: Role.owner }, process.env.JWT_SECRET || 'fallback-secret', { expiresIn: '15m' });
   });
 
@@ -46,7 +53,12 @@ describe('Dashboard Metrics', () => {
         name: 'Dashboard Item',
         sku: 'DASH-1',
         price: 1500,
-        stock_qty: 20
+        inventory_levels: {
+          create: {
+            location_id: (global as any).testLocationId,
+            stock_qty: 20
+          }
+        }
       }
     });
 
@@ -58,7 +70,7 @@ describe('Dashboard Metrics', () => {
         status: 'fulfilled',
         total: 3000,
         items: {
-          create: [{ product_id: product.id, qty: 2, unit_price: 1500 }]
+          create: [{ product_id: product.id, location_id: (global as any).testLocationId, qty: 2, unit_price: 1500 }]
         }
       }
     });
@@ -71,7 +83,7 @@ describe('Dashboard Metrics', () => {
         status: 'pending',
         total: 1500,
         items: {
-          create: [{ product_id: product.id, qty: 1, unit_price: 1500 }]
+          create: [{ product_id: product.id, location_id: (global as any).testLocationId, qty: 1, unit_price: 1500 }]
         }
       }
     });
@@ -84,7 +96,7 @@ describe('Dashboard Metrics', () => {
         status: 'cancelled',
         total: 6000,
         items: {
-          create: [{ product_id: product.id, qty: 4, unit_price: 1500 }]
+          create: [{ product_id: product.id, location_id: (global as any).testLocationId, qty: 4, unit_price: 1500 }]
         }
       }
     });
@@ -105,22 +117,22 @@ describe('Dashboard Metrics', () => {
   it('returns products with stock < low_stock_threshold', async () => {
     // 1. Create one low stock product
     const lowStock = await prisma.product.create({
-      data: { org_id: orgId, name: 'Low Stock', sku: 'LOW', price: 1000, stock_qty: 2 }
+      data: { org_id: orgId, name: 'Low Stock', sku: 'LOW', price: 1000, inventory_levels: { create: { location_id: (global as any).testLocationId, stock_qty: 2, low_stock_threshold: 5 } } }
     });
     
     // 2. Create one sufficient stock product
     await prisma.product.create({
-      data: { org_id: orgId, name: 'High Stock', sku: 'HIGH', price: 2000, stock_qty: 10 }
+      data: { org_id: orgId, name: 'High Stock', sku: 'HIGH', price: 2000, inventory_levels: { create: { location_id: (global as any).testLocationId, stock_qty: 10, low_stock_threshold: 5 } } }
     });
 
     // 3. Create one custom threshold product that is low
     const customLow = await prisma.product.create({
-      data: { org_id: orgId, name: 'Custom Low', sku: 'CUST-LOW', price: 3000, stock_qty: 8, low_stock_threshold: 10 }
+      data: { org_id: orgId, name: 'Custom Low', sku: 'CUST-LOW', price: 3000, inventory_levels: { create: { location_id: (global as any).testLocationId, stock_qty: 8, low_stock_threshold: 10 } } }
     });
     
     // 4. Create one custom threshold product that is sufficient
     await prisma.product.create({
-      data: { org_id: orgId, name: 'Custom High', sku: 'CUST-HIGH', price: 4000, stock_qty: 12, low_stock_threshold: 10 }
+      data: { org_id: orgId, name: 'Custom High', sku: 'CUST-HIGH', price: 4000, inventory_levels: { create: { location_id: (global as any).testLocationId, stock_qty: 12, low_stock_threshold: 10 } } }
     });
 
     const res = await request(app)

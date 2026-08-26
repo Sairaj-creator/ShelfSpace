@@ -1,6 +1,7 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  previewFeatures = ["fullTextSearch"]
 }
 
 datasource db {
@@ -15,6 +16,7 @@ enum Plan {
 
 enum Role {
   owner
+  admin
   staff
 }
 
@@ -35,6 +37,7 @@ model Organization {
   users    User[]
   products Product[]
   orders   Order[]
+  locations Location[]
   audit_logs AuditLog[]
   idempotency_records IdempotencyRecord[]
 
@@ -64,6 +67,7 @@ model User {
   created_at    DateTime @default(now())
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  refresh_tokens RefreshToken[]
 
   @@index([org_id])
   @@map("users")
@@ -74,14 +78,14 @@ model Product {
   org_id              String
   name                String
   sku                 String
-  price               Int // Store as cents
-  stock_qty           Int      @default(0)
-  low_stock_threshold Int      @default(5)
+  price               Int // Stored in cents
+  search_vector       Unsupported("tsvector")?
   created_at          DateTime @default(now())
   deleted_at          DateTime?
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   order_items  OrderItem[]
+  inventory_levels InventoryLevel[]
 
   @@index([org_id])
   @@map("products")
@@ -107,11 +111,13 @@ model OrderItem {
   id         String @id @default(uuid())
   order_id   String
   product_id String
+  location_id String
   qty        Int
   unit_price Int // Store as cents at time of order
 
-  order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  order    Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  location Location @relation(fields: [location_id], references: [id], onDelete: Restrict)
 
   @@index([order_id])
   @@index([product_id])
@@ -130,4 +136,51 @@ model AuditLog {
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   @@index([org_id])
   @@map("audit_logs")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  jti        String    @unique
+  user_id    String
+  expires_at DateTime
+  revoked_at DateTime?
+  created_at DateTime  @default(now())
+
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+model Location {
+  id         String   @id @default(uuid())
+  org_id     String
+  name       String
+  address    String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  organization     Organization     @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  inventory_levels InventoryLevel[]
+  order_items      OrderItem[]
+
+  @@index([org_id])
+  @@map("locations")
+}
+
+model InventoryLevel {
+  id                  String   @id @default(uuid())
+  product_id          String
+  location_id         String
+  stock_qty           Int      @default(0)
+  low_stock_threshold Int      @default(0)
+  updated_at          DateTime @updatedAt
+
+  product  Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, location_id])
+  @@index([product_id])
+  @@index([location_id])
+  @@map("inventory_levels")
 }

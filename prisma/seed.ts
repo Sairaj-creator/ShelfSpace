@@ -25,14 +25,22 @@ async function main() {
           { email: 'staff@artisan.com', password_hash: passwordHash, role: Role.staff },
         ],
       },
-      products: {
+      locations: {
         create: [
-          { name: 'Handmade Mug', sku: 'MUG-001', price: 1500, stock_qty: 20 },
-          { name: 'Woven Basket', sku: 'BSK-002', price: 4500, stock_qty: 5 },
-        ],
-      },
+          { name: 'Main Warehouse' }
+        ]
+      }
     },
-    include: { products: true, users: true },
+    include: { users: true, locations: true },
+  });
+
+  const org1LocId = org1.locations[0].id;
+
+  const org1P1 = await prisma.product.create({
+    data: { org_id: org1.id, name: 'Handmade Mug', sku: 'MUG-001', price: 1500, inventory_levels: { create: [{ location_id: org1LocId, stock_qty: 20 }] } }
+  });
+  const org1P2 = await prisma.product.create({
+    data: { org_id: org1.id, name: 'Woven Basket', sku: 'BSK-002', price: 4500, inventory_levels: { create: [{ location_id: org1LocId, stock_qty: 5 }] } }
   });
 
   // Create an order for Org 1
@@ -44,11 +52,7 @@ async function main() {
       total: 1500,
       items: {
         create: [
-          {
-            product_id: org1.products[0].id,
-            qty: 1,
-            unit_price: 1500,
-          },
+          { product_id: org1P1.id, location_id: org1LocId, qty: 1, unit_price: 1500 },
         ],
       },
     },
@@ -64,14 +68,22 @@ async function main() {
           { email: 'owner@digitalprints.com', password_hash: passwordHash, role: Role.owner },
         ],
       },
-      products: {
+      locations: {
         create: [
-          { name: 'Print A', sku: 'PRT-A', price: 500, stock_qty: 100 },
-          { name: 'Print B', sku: 'PRT-B', price: 500, stock_qty: 100 },
-        ],
-      },
+          { name: 'Main Warehouse' }
+        ]
+      }
     },
-    include: { products: true },
+    include: { locations: true },
+  });
+
+  const org2LocId = org2.locations[0].id;
+
+  const org2P1 = await prisma.product.create({
+    data: { org_id: org2.id, name: 'Print A', sku: 'PRT-A', price: 500, inventory_levels: { create: [{ location_id: org2LocId, stock_qty: 100 }] } }
+  });
+  const org2P2 = await prisma.product.create({
+    data: { org_id: org2.id, name: 'Print B', sku: 'PRT-B', price: 500, inventory_levels: { create: [{ location_id: org2LocId, stock_qty: 100 }] } }
   });
 
   // Create an order for Org 2
@@ -83,16 +95,8 @@ async function main() {
       total: 1000,
       items: {
         create: [
-          {
-            product_id: org2.products[0].id,
-            qty: 1,
-            unit_price: 500,
-          },
-          {
-            product_id: org2.products[1].id,
-            qty: 1,
-            unit_price: 500,
-          },
+          { product_id: org2P1.id, location_id: org2LocId, qty: 1, unit_price: 500 },
+          { product_id: org2P2.id, location_id: org2LocId, qty: 1, unit_price: 500 },
         ],
       },
     },

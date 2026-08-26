@@ -3,6 +3,7 @@ export type AuditAction =
   | 'USER_REMOVED' 
   | 'ORDER_CANCELLED' 
   | 'STOCK_UPDATED' 
+  | 'ORDER_DELETED'
   | 'BULK_PRODUCTS_IMPORTED';
 
 interface AuditParams {

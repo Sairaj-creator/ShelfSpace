@@ -4,7 +4,7 @@ import { prisma } from '../db';
 
 const ROLE_WEIGHT: Record<Role, number> = {
   owner: 3,
-  // admin: 2 (if added later)
+  admin: 2,
   staff: 1
 };
 

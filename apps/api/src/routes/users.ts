@@ -5,7 +5,7 @@ import { Role } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../db';
 import { createAuditEntry } from '../services/audit';
-import { EmailService } from '../services/email';
+import { enqueueJob } from '../lib/queue';
 
 export const usersRouter = Router();
 
@@ -28,8 +28,8 @@ usersRouter.get('/', async (req: Request, res: Response): Promise<any> => {
   }
 });
 
-// POST /users/invite (Owner only)
-usersRouter.post('/invite', requireRole(Role.owner), async (req: Request, res: Response): Promise<any> => {
+// POST /users/invite (Admin only)
+usersRouter.post('/invite', requireRole(Role.admin), async (req: Request, res: Response): Promise<any> => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -62,8 +62,7 @@ usersRouter.post('/invite', requireRole(Role.owner), async (req: Request, res: R
       });
     });
 
-    // Send email via service (decoupled, non-blocking)
-    EmailService.sendInviteEmail(email, token);
+    await enqueueJob('sendEmail', { to: email, subject: 'You have been invited to ShelfSpace', template: 'invite', token });
 
     return res.json({ message: 'Invite sent successfully' });
   } catch (error) {

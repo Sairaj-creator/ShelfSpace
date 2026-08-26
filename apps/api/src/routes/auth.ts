@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { prisma } from '../db';
 import { Role } from '@prisma/client';
 import { requireAuth, getJwtSecret } from '../middleware/tenant';
+import { enqueueJob } from '../lib/queue';
 import rateLimit from 'express-rate-limit';
 
 const authLimiter = rateLimit({
@@ -32,7 +34,7 @@ authRouter.post('/signup', async (req: Request, res: Response): Promise<any> => 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       // Send an email letting them know they already have an account (simulated)
-      console.log(`[Email Shortcut] Account already exists for ${email}. Sending "Already have an account" notice.`);
+      await enqueueJob('sendEmail', { to: email, subject: 'Account already exists', template: 'account_exists' });
       return res.status(201).json({ message: 'If successful, a verification email has been sent.' });
     }
 
@@ -47,6 +49,11 @@ authRouter.post('/signup', async (req: Request, res: Response): Promise<any> => 
             password_hash: passwordHash,
             role: Role.owner,
           }
+        },
+        locations: {
+          create: {
+            name: 'Main Warehouse'
+          }
         }
       },
       include: {
@@ -59,7 +66,7 @@ authRouter.post('/signup', async (req: Request, res: Response): Promise<any> => 
     // Generate secure email verification token using password_hash as secret
     const verifySecret = getJwtSecret() + user.password_hash;
     const verifyToken = jwt.sign({ userId: user.id, email: user.email }, verifySecret, { expiresIn: '24h' });
-    console.log(`[Email Shortcut] Sending verification email to ${email} with token ${verifyToken}`);
+    await enqueueJob('sendEmail', { to: email, subject: 'Verify your email', template: 'verify_email', token: verifyToken });
 
     // Do NOT return the accessToken immediately since they need to verify email.
     // Or we return it and let them use the app, but with a generic success message
@@ -100,8 +107,20 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<any> => {
       getJwtSecret(),
       { expiresIn: '15m' }
     );
+    
+    const jti = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await prisma.refreshToken.create({
+      data: {
+        jti,
+        user_id: user.id,
+        expires_at: expiresAt,
+      }
+    });
+
     const refreshToken = jwt.sign(
-      { userId: user.id, type: 'refresh' },
+      { userId: user.id, jti, type: 'refresh' },
       getJwtSecret(),
       { expiresIn: '7d' }
     );
@@ -128,8 +147,27 @@ authRouter.post('/refresh', async (req: Request, res: Response): Promise<any> =>
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 
-    if (payload.type !== 'refresh') {
-      return res.status(401).json({ error: 'Invalid token type' });
+    if (payload.type !== 'refresh' || !payload.jti) {
+      return res.status(401).json({ error: 'Invalid token type or missing jti' });
+    }
+
+    const result = await prisma.refreshToken.updateMany({
+      where: { jti: payload.jti, revoked_at: null },
+      data: { revoked_at: new Date() }
+    });
+
+    if (result.count === 0) {
+      // The token wasn't found or was already revoked.
+      const existing = await prisma.refreshToken.findUnique({ where: { jti: payload.jti } });
+      if (existing && existing.revoked_at) {
+        // Breach detection: Token was reused! Revoke ALL tokens for this user.
+        await prisma.refreshToken.updateMany({
+          where: { user_id: existing.user_id },
+          data: { revoked_at: new Date() }
+        });
+        console.warn(`[Auth] BREACH DETECTED: Refresh token reuse for user ${existing.user_id}`);
+      }
+      return res.status(401).json({ error: 'Token revoked or invalid' });
     }
 
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
@@ -137,11 +175,30 @@ authRouter.post('/refresh', async (req: Request, res: Response): Promise<any> =>
       return res.status(401).json({ error: 'User not found' });
     }
 
+    const newJti = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await prisma.refreshToken.create({
+      data: {
+        jti: newJti,
+        user_id: user.id,
+        expires_at: expiresAt,
+      }
+    });
+
     const accessToken = jwt.sign(
       { userId: user.id, orgId: user.org_id, role: user.role },
       getJwtSecret(),
       { expiresIn: '15m' }
     );
+    
+    const newRefreshToken = jwt.sign(
+      { userId: user.id, jti: newJti, type: 'refresh' },
+      getJwtSecret(),
+      { expiresIn: '7d' }
+    );
+
+    res.cookie('refreshToken', newRefreshToken, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });
     return res.json({ accessToken });
   } catch (error: any) {
     console.error(error);
@@ -149,7 +206,23 @@ authRouter.post('/refresh', async (req: Request, res: Response): Promise<any> =>
   }
 });
 
-authRouter.post('/logout', (req: Request, res: Response): any => {
+authRouter.post('/logout', async (req: Request, res: Response): Promise<any> => {
+  const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+  
+  if (refreshToken) {
+    try {
+      const payload: any = jwt.verify(refreshToken, getJwtSecret(), { ignoreExpiration: true });
+      if (payload.jti) {
+        await prisma.refreshToken.updateMany({
+          where: { jti: payload.jti, revoked_at: null },
+          data: { revoked_at: new Date() }
+        });
+      }
+    } catch (e) {
+      // Ignore token verification errors on logout
+    }
+  }
+
   res.clearCookie('refreshToken', {
     httpOnly: true,
     sameSite: 'lax',
@@ -188,7 +261,7 @@ authRouter.post('/verify-email', async (req: Request, res: Response): Promise<an
       data: { email_verified: true }
     });
 
-    console.log(`[Email Shortcut] Email verified for user ${user.id}`);
+    await enqueueJob('sendEmail', { to: user.email, subject: 'Email verified', template: 'email_verified' });
     return res.json({ message: 'Email verified' });
   } catch (error) {
     console.error(error);
@@ -211,7 +284,7 @@ authRouter.post('/request-reset', async (req: Request, res: Response): Promise<a
     const secret = getJwtSecret() + user.password_hash;
     const token = jwt.sign({ userId: user.id, email: user.email }, secret, { expiresIn: '15m' });
 
-    console.log(`[Email Shortcut] Sending password reset link to ${email} with token ${token}`);
+    await enqueueJob('sendEmail', { to: email, subject: 'Password Reset', template: 'password_reset', token });
     return res.json({ message: 'If email exists, reset link sent' });
   } catch (error) {
     console.error(error);
@@ -251,7 +324,7 @@ authRouter.post('/accept-invite', async (req: Request, res: Response): Promise<a
       }
     });
 
-    console.log(`[Email Shortcut] User accepted invite: ${user.email}`);
+    await enqueueJob('sendEmail', { to: user.email, subject: 'Welcome to ShelfSpace', template: 'invite_accepted' });
     
     return res.status(201).json({ message: 'User created' });
   } catch (error) {
@@ -281,7 +354,7 @@ authRouter.post('/reset-password', async (req: Request, res: Response): Promise<
       data: { password_hash: passwordHash }
     });
 
-    console.log(`[Email Shortcut] Password reset completed for user ${userId}`);
+    await enqueueJob('sendEmail', { to: user.email, subject: 'Password Reset Successful', template: 'password_reset_success' });
     return res.json({ message: 'Password reset successful' });
   } catch (error) {
     console.error(error);

@@ -16,14 +16,18 @@ describe('Tenant Isolation Middleware (Layer 3)', () => {
     await prisma.organization.deleteMany();
 
     const orgA = await prisma.organization.create({
-      data: { name: 'Org A' }
+      data: { name: 'Org A', locations: { create: { name: 'Main Warehouse' } } },
+      include: { locations: true }
     });
     orgAId = orgA.id;
+    (global as any).testTenantLocA = orgA.locations[0].id;
 
     const orgB = await prisma.organization.create({
-      data: { name: 'Org B' }
+      data: { name: 'Org B', locations: { create: { name: 'Main Warehouse' } } },
+      include: { locations: true }
     });
     orgBId = orgB.id;
+    (global as any).testTenantLocB = orgB.locations[0].id;
 
     // Seed some products
     await prisma.product.create({
@@ -119,7 +123,7 @@ describe('Tenant Isolation Middleware (Layer 3)', () => {
 
     const productB = await prisma.product.findFirst({ where: { org_id: orgBId } });
     const itemB = await prisma.orderItem.create({
-      data: { order_id: orderB.id, product_id: productB!.id, qty: 1, unit_price: 2000 }
+      data: { order_id: orderB.id, product_id: productB!.id, location_id: (global as any).testTenantLocB, qty: 1, unit_price: 2000 }
     });
 
     const dbA = scopedPrisma(orgAId);
@@ -136,7 +140,7 @@ describe('Tenant Isolation Middleware (Layer 3)', () => {
     // 3. Trying to create an OrderItem under Org B's order using Org A's scopedPrisma
     await expect(
       dbA.orderItem.create({
-        data: { order_id: orderB.id, product_id: productB!.id, qty: 5, unit_price: 100 }
+        data: { order_id: orderB.id, product_id: productB!.id, location_id: (global as any).testTenantLocB, qty: 5, unit_price: 100 }
       })
     ).rejects.toThrow('Unauthorized cross-tenant access to Order');
 

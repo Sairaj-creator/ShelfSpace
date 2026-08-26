@@ -22,16 +22,28 @@ dashboardRouter.get('/metrics', requireAuth, async (req: Request, res: Response)
   }
 
   // 2. Fetch Low Stock Products
-  // Fetch all products for the org and filter in JS because Prisma cannot compare two columns directly
-  const allProducts = await db.product.findMany({
+  // Fetch all products for the org and compute total stock across inventory levels
+  const rawProducts = await db.product.findMany({
     select: {
       id: true,
       name: true,
       sku: true,
-      stock_qty: true,
-      low_stock_threshold: true,
+      inventory_levels: {
+        select: {
+          stock_qty: true,
+          low_stock_threshold: true
+        }
+      }
     }
   });
+
+  const allProducts = rawProducts.map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    stock_qty: p.inventory_levels.reduce((sum: number, il: any) => sum + il.stock_qty, 0),
+    low_stock_threshold: p.inventory_levels.length > 0 ? Math.max(...p.inventory_levels.map((il: any) => il.low_stock_threshold)) : 0
+  }));
 
   const lowStockProducts = allProducts
     .filter((p: any) => p.stock_qty < p.low_stock_threshold)

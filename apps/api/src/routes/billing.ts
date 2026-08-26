@@ -5,6 +5,7 @@ import { Role } from '@prisma/client';
 import { prisma } from '../db';
 import { stripe } from '../lib/stripe';
 import Stripe from 'stripe';
+import { enqueueJob } from '../lib/queue';
 
 export const billingRouter = Router();
 
@@ -27,84 +28,11 @@ billingRouter.post('/webhook', async (req: Request, res: Response): Promise<any>
   }
 
   try {
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const orgId = session.client_reference_id;
-        const customerId = session.customer as string;
-
-        if (orgId) {
-          await prisma.organization.update({
-            where: { id: orgId },
-            data: {
-              stripe_customer_id: customerId,
-              plan: 'pro',
-              subscription_status: 'active',
-            },
-          });
-        }
-        break;
-      }
-
-      case 'invoice.paid': {
-        const invoice = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
-
-        const org = await prisma.organization.findFirst({ where: { stripe_customer_id: customerId } });
-        if (!org) {
-          console.warn(`Webhook: Unknown customer ${customerId} for invoice.paid`);
-          break;
-        }
-
-        await prisma.organization.update({
-          where: { id: org.id },
-          data: { subscription_status: 'active' },
-        });
-        break;
-      }
-
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
-
-        const org = await prisma.organization.findFirst({ where: { stripe_customer_id: customerId } });
-        if (!org) {
-          console.warn(`Webhook: Unknown customer ${customerId} for invoice.payment_failed`);
-          break;
-        }
-
-        await prisma.organization.update({
-          where: { id: org.id },
-          data: { subscription_status: 'past_due' },
-        });
-        break;
-      }
-
-      case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription;
-        const customerId = subscription.customer as string;
-
-        const org = await prisma.organization.findFirst({ where: { stripe_customer_id: customerId } });
-        if (!org) {
-          console.warn(`Webhook: Unknown customer ${customerId} for customer.subscription.deleted`);
-          break;
-        }
-
-        await prisma.organization.update({
-          where: { id: org.id },
-          data: { plan: 'free', subscription_status: 'canceled' },
-        });
-        break;
-      }
-    }
-
-    // Return a 200 response to acknowledge receipt of the event
+    await enqueueJob('stripeWebhook', { event });
     return res.json({ received: true });
   } catch (error) {
-    console.error(`Webhook processing error:`, error);
-    // Return 200 even on processing errors if they shouldn't trigger endless retries.
-    // In production, we might want a dead-letter queue.
-    return res.status(200).json({ error: 'Processing failed, but acknowledged' });
+    console.error(`Webhook enqueuing error:`, error);
+    return res.status(500).json({ error: 'Failed to enqueue webhook' });
   }
 });
 

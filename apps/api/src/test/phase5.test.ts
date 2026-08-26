@@ -6,6 +6,7 @@ import { Role } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../middleware/tenant';
 import { sanitizeCsvCell, formatRowToCsv } from '../utils/csv';
+import { processJobInline } from '../worker';
 
 describe('Phase 5 Features & Security', () => {
   let orgId: string;
@@ -96,7 +97,7 @@ describe('Phase 5 Features & Security', () => {
     });
 
     it('should reject bulk import exceeding free plan limit (25 products)', async () => {
-      // Create 20 products
+      // Create 10 products first
       const bulkData = Array.from({ length: 10 }, (_, i) => ({
         name: `Product ${i}`,
         sku: `SKU-${i}`,
@@ -108,7 +109,7 @@ describe('Phase 5 Features & Security', () => {
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({ products: bulkData });
 
-      // Try importing 20 more on free plan (20 + 10 = 30 > 25)
+      // Try importing 20 more on free plan (10 + 20 = 30 > 25)
       const overflowData = Array.from({ length: 20 }, (_, i) => ({
         name: `New Product ${i}`,
         sku: `NEW-SKU-${i}`,
@@ -120,11 +121,15 @@ describe('Phase 5 Features & Security', () => {
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({ products: overflowData });
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Bulk import of 20 products exceeds free plan limit of 25 products');
+      expect(res.status).toBe(202);
+      expect(res.body.jobId).toBeDefined();
+
+      // Assert that first batch created 10 products and second batch hit plan limit error in background job
+      const count = await prisma.product.count({ where: { org_id: orgId } });
+      expect(count).toBe(10); // First batch succeeded, second failed
     });
 
-    it('should successfully bulk import products and generate a transactional AuditLog entry', async () => {
+    it('should successfully bulk import products and generate a transactional AuditLog entry via background job', async () => {
       const res = await request(app)
         .post('/products/bulk')
         .set('Authorization', `Bearer ${ownerToken}`)
@@ -135,8 +140,9 @@ describe('Phase 5 Features & Security', () => {
           ],
         });
 
-      expect(res.status).toBe(201);
-      expect(res.body.created_count).toBe(2);
+      expect(res.status).toBe(202);
+      expect(res.body.status).toBe('accepted');
+      expect(res.body.jobId).toBeDefined();
 
       // Verify Audit Log
       const logs = await prisma.auditLog.findMany({ where: { org_id: orgId } });

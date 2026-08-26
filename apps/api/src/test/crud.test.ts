@@ -24,9 +24,16 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
 
     // Create org
     const org = await prisma.organization.create({
-      data: { name: 'CRUD Org', plan: 'free', subscription_status: 'active' }
+      data: { 
+        name: 'CRUD Org', 
+        plan: 'free', 
+        subscription_status: 'active',
+        locations: { create: { name: 'Main Warehouse' } }
+      },
+      include: { locations: true }
     });
     orgId = org.id;
+    (global as any).testCrudLocId = org.locations[0].id;
 
     const pwHash = await bcrypt.hash('password123', 12);
 
@@ -342,7 +349,13 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
       // Create a second org and user
       const pwHash = await bcrypt.hash('password123', 10);
       const org2 = await prisma.organization.create({
-        data: { name: 'Org 2', plan: 'free', subscription_status: 'active' }
+        data: { 
+          name: 'Org 2', 
+          plan: 'free', 
+          subscription_status: 'active',
+          locations: { create: { name: 'Main Warehouse' } }
+        },
+        include: { locations: true }
       });
       const owner2 = await prisma.user.create({
         data: { org_id: org2.id, email: 'owner2@crud.com', password_hash: pwHash, role: Role.owner }
@@ -350,7 +363,7 @@ describe('Layer 4 - Core CRUD (Products & Orders)', () => {
       const owner2Token = jwt.sign({ userId: owner2.id, email: owner2.email, role: owner2.role, orgId: owner2.org_id }, JWT_SECRET, { expiresIn: '15m' });
 
       const prod2 = await prisma.product.create({
-        data: { org_id: org2.id, name: 'Org 2 Product', sku: 'ORG2-PROD', price: 1000, stock_qty: 10 }
+        data: { org_id: org2.id, name: 'Org 2 Product', sku: 'ORG2-PROD', price: 1000, inventory_levels: { create: { location_id: org2.locations[0].id, stock_qty: 10 } } }
       });
 
       // Org 2 creates order with SAME idempotency key

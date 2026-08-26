@@ -8,6 +8,8 @@ import { usersRouter } from './routes/users';
 import { billingRouter } from './routes/billing';
 import { dashboardRouter } from './routes/dashboard';
 import { auditRouter } from './routes/audit';
+import { locationsRouter } from './routes/locations';
+import { inventoryRouter } from './routes/inventory';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
@@ -38,6 +40,8 @@ app.use('/products/bulk', express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
+import { eventsRouter } from './routes/events';
+
 app.use('/auth', authRouter);
 app.use('/products', productsRouter);
 app.use('/orders', ordersRouter);
@@ -45,6 +49,9 @@ app.use('/dashboard', dashboardRouter);
 app.use('/users', usersRouter);
 app.use('/billing', billingRouter);
 app.use('/audit-logs', auditRouter);
+app.use('/locations', locationsRouter);
+app.use('/inventory', inventoryRouter);
+app.use('/events', eventsRouter);
 
 // Layer 0 - Health check
 app.get('/health', (req: Request, res: Response) => {

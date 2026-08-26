@@ -4,6 +4,7 @@ import { app } from '../app';
 import { prisma } from '../db';
 import { vi } from 'vitest';
 import jwt from 'jsonwebtoken';
+import * as queue from '../lib/queue';
 
 describe('Auth Endpoints (Layer 2)', () => {
   beforeEach(async () => {
@@ -154,18 +155,15 @@ describe('Auth Endpoints (Layer 2)', () => {
 
   it('should succeed verify-email route with valid token', async () => {
     let verifyToken = '';
-    const originalLog = console.log;
-    console.log = vi.fn((msg: string) => {
-      if (msg.includes('Sending verification email to test@example.com with token')) {
-        verifyToken = msg.split('token ')[1];
+    const enqueueSpy = vi.spyOn(queue, 'enqueueJob').mockImplementation(async (name, data) => {
+      if (name === 'sendEmail' && data.template === 'verify_email') {
+        verifyToken = data.token;
       }
-      originalLog(msg);
     });
 
     await request(app).post('/auth/signup').send(testUser);
     
-    // Restore console.log
-    console.log = originalLog;
+    enqueueSpy.mockRestore();
 
     const res = await request(app).post('/auth/verify-email').send({ token: verifyToken });
     expect(res.status).toBe(200);
@@ -212,6 +210,64 @@ describe('Auth Endpoints (Layer 2)', () => {
     expect(resReuse.body.error).toBe('Invalid or expired reset token');
   });
 
+  describe('Refresh Token Rotation & Breach Detection', () => {
+    it('should rotate refresh token on successful refresh', async () => {
+      await request(app).post('/auth/signup').send(testUser);
+      await prisma.user.update({ where: { email: testUser.email }, data: { email_verified: true } });
+      const loginRes = await request(app).post('/auth/login').send({ email: testUser.email, password: testUser.password });
+      
+      const firstCookie = loginRes.headers['set-cookie'][0];
+      const firstToken = firstCookie.split('refreshToken=')[1].split(';')[0];
+
+      // Refresh token
+      const refreshRes = await request(app).post('/auth/refresh').set('Cookie', firstCookie);
+      expect(refreshRes.status).toBe(200);
+      
+      const secondCookie = refreshRes.headers['set-cookie'][0];
+      const secondToken = secondCookie.split('refreshToken=')[1].split(';')[0];
+
+      expect(secondToken).not.toBe(firstToken); // Token was rotated
+    });
+
+    it('should trigger breach detection on refresh token reuse', async () => {
+      await request(app).post('/auth/signup').send(testUser);
+      await prisma.user.update({ where: { email: testUser.email }, data: { email_verified: true } });
+      const loginRes = await request(app).post('/auth/login').send({ email: testUser.email, password: testUser.password });
+      
+      const firstCookie = loginRes.headers['set-cookie'][0];
+
+      // Legitimate refresh
+      const firstRefreshRes = await request(app).post('/auth/refresh').set('Cookie', firstCookie);
+      expect(firstRefreshRes.status).toBe(200);
+
+      // Hacker tries to use the stolen old token
+      const breachRes = await request(app).post('/auth/refresh').set('Cookie', firstCookie);
+      expect(breachRes.status).toBe(401);
+      expect(breachRes.body.error).toMatch(/Token revoked/i);
+
+      // Now the legitimate user tries to use their new valid token - they should be logged out!
+      const validCookie = firstRefreshRes.headers['set-cookie'][0];
+      const legitimateUserRes = await request(app).post('/auth/refresh').set('Cookie', validCookie);
+      
+      expect(legitimateUserRes.status).toBe(401); // Boom! Token family revoked.
+    });
+
+    it('should revoke token server-side on logout', async () => {
+      await request(app).post('/auth/signup').send(testUser);
+      await prisma.user.update({ where: { email: testUser.email }, data: { email_verified: true } });
+      const loginRes = await request(app).post('/auth/login').send({ email: testUser.email, password: testUser.password });
+      
+      const cookie = loginRes.headers['set-cookie'][0];
+
+      // Logout
+      await request(app).post('/auth/logout').set('Cookie', cookie);
+
+      // Try to refresh with the logged-out token
+      const refreshRes = await request(app).post('/auth/refresh').set('Cookie', cookie);
+      expect(refreshRes.status).toBe(401);
+    });
+  });
+
   describe('Rate Limiting', () => {
     it('blocks excessive requests to auth endpoints', async () => {
       // 100 is the limit. Send 101 requests.
@@ -226,3 +282,4 @@ describe('Auth Endpoints (Layer 2)', () => {
     });
   });
 });
+

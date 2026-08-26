@@ -28,13 +28,17 @@ describe('Products API', () => {
             password_hash: passwordHash,
             role: Role.owner,
           }
+        },
+        locations: {
+          create: { name: 'Main Warehouse' }
         }
       },
-      include: { users: true }
+      include: { users: true, locations: true }
     });
 
     orgId = org.id;
     ownerId = org.users[0].id;
+    (global as any).testProdLoc = org.locations[0].id;
     token = jwt.sign({ userId: ownerId, orgId, role: Role.owner }, process.env.JWT_SECRET || 'fallback-secret', { expiresIn: '15m' });
   });
 
@@ -76,9 +80,14 @@ describe('Products API', () => {
         name: 'Update Item',
         sku: 'UPD-1',
         price: 1500,
-        stock_qty: 20,
-        low_stock_threshold: 10
-      } as any
+        inventory_levels: {
+          create: {
+            location_id: (global as any).testProdLoc,
+            stock_qty: 20,
+            low_stock_threshold: 10
+          }
+        }
+      }
     });
 
     const res = await request(app)
